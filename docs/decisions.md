@@ -97,3 +97,15 @@ Append-only. Never edit a past ADR — when a decision changes, add a new ADR an
 **Decision:** Record the actual provisioned stack: PHP 8.5 (Sail `sail-8.5/app` image), MySQL 8.4, Redis (alpine), Mailpit. Laravel 13.x. This satisfies ADR-3 (8.3+) — no conflict, just the concrete number.
 
 **Consequences:** The backend app container is named `laravel.test` (not `backend`), which is why the CLAUDE.md command section uses Sail syntax (`./vendor/bin/sail ...`) run from `backend/`. Ports: web 80, Vite 5173, MySQL 3306, Mailpit UI 8025.
+
+---
+
+## ADR-9: Frontend runs on the host via nvm (not Docker); Next.js 16 in `frontend/`
+
+**Status:** Accepted
+
+**Context:** The backend is Dockerized via Sail. For the Next.js frontend we chose between a Docker container (full "everything in Docker" consistency) and running on the host via nvm (better dev experience — instant hot-reload, no volume file-watching friction). This is a dev-time decision; production deployment to the VM will be containerized separately.
+
+**Decision:** Run Next.js on the host using nvm Node 24 (per ADR-4). The app was scaffolded with `create-next-app@16.2` into `frontend/` (TypeScript, Tailwind, ESLint, App Router, `src/` dir, `@/*` alias). This overrides the earlier CLAUDE.md assumption that the frontend runs in a container.
+
+**Consequences:** Frontend dev is `npm run dev` on the host from `frontend/`, not through Docker. `create-next-app` also generated `frontend/AGENTS.md` (a Next.js 16 warning to consult bundled docs before coding). We keep it as a deliberate exception to ADR-7's "single root CLAUDE.md": AGENTS.md is a separate, complementary mechanism carrying frontend-specific guidance, not a competing behavioral contract. The redundant `frontend/CLAUDE.md` (which only pointed at AGENTS.md) was deleted.
