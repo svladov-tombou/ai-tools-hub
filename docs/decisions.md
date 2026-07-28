@@ -85,3 +85,15 @@ Append-only. Never edit a past ADR — when a decision changes, add a new ADR an
 **Decision:** Keep one root CLAUDE.md covering both apps, staying within the ~80–120 line budget.
 
 **Consequences:** The whole behavioral contract is visible in one place — simpler for a solo learning project. If the file outgrows its budget, split into per-app files and record that as a new ADR.
+
+---
+
+## ADR-8: Actual backend versions after Sail install (supersedes the version note in ADR-3)
+
+**Status:** Accepted
+
+**Context:** ADR-2/3 targeted "Laravel 13, PHP 8.3+". The `laravel.build` installer provisioned the current Sail runtime, which resolved to concrete versions.
+
+**Decision:** Record the actual provisioned stack: PHP 8.5 (Sail `sail-8.5/app` image), MySQL 8.4, Redis (alpine), Mailpit. Laravel 13.x. This satisfies ADR-3 (8.3+) — no conflict, just the concrete number.
+
+**Consequences:** The backend app container is named `laravel.test` (not `backend`), which is why the CLAUDE.md command section uses Sail syntax (`./vendor/bin/sail ...`) run from `backend/`. Ports: web 80, Vite 5173, MySQL 3306, Mailpit UI 8025.

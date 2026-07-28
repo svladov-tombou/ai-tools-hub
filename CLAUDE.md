@@ -5,15 +5,14 @@ Stack: Laravel 13 (PHP 8.3+), Next.js + React + TypeScript, MySQL, Redis — all
 Global rules in `~/.claude/CLAUDE.md` apply. This file adds project specifics and overrides on conflict.
 
 ## Commands (run these; do not guess)
-- Everything runs in Docker. Do not run `php`, `composer`, `npm`, or `artisan` on the host — exec into the containers.
-- Start stack: `docker compose up -d` — Stop: `docker compose down`
-- Backend artisan: `docker compose exec backend php artisan <cmd>`
-- Backend tests: `docker compose exec backend php artisan test` (Pest)
-- Backend deps: `docker compose exec backend composer <cmd>`
-- Frontend dev is served by its container; run frontend cmds via: `docker compose exec frontend npm run <script>`
-- Frontend tests: `docker compose exec frontend npm run test` (Vitest)
-- Lint/format backend: `docker compose exec backend ./vendor/bin/pint`
-- Lint/typecheck frontend: `docker compose exec frontend npm run lint` and `... npm run typecheck`
+- Everything runs in Docker. Do not run `php`, `composer`, `npm`, or `artisan` on the host — go through Sail / the containers.
+- Backend uses Laravel Sail. Run Sail commands from the `backend/` directory (that is where `compose.yaml` lives).
+- Start stack: `cd backend && ./vendor/bin/sail up -d` — Stop: `./vendor/bin/sail down` — Status: `./vendor/bin/sail ps`
+- Backend artisan: `./vendor/bin/sail artisan <cmd>`
+- Backend tests: `./vendor/bin/sail artisan test` (Pest)
+- Backend deps: `./vendor/bin/sail composer <cmd>`
+- Lint/format backend: `./vendor/bin/sail bin pint`
+- Frontend (Next.js) lives in `frontend/`. Exact commands TBD until the frontend is scaffolded — update this line then.
 - Before declaring a task done: backend tests, frontend tests, lint, and typecheck must all pass.
 
 ## Architecture — backend (thin controllers, logic in modules)
