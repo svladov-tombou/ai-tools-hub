@@ -12,7 +12,7 @@ Global rules in `~/.claude/CLAUDE.md` apply. This file adds project specifics an
 - Backend tests: `./vendor/bin/sail artisan test` (Pest)
 - Backend deps: `./vendor/bin/sail composer <cmd>`
 - Lint/format backend: `./vendor/bin/sail bin pint`
-- Frontend (Next.js) lives in `frontend/`. Exact commands TBD until the frontend is scaffolded — update this line then.
+- Frontend (Next.js) lives in `frontend/`, runs on the host via nvm Node 24 (see ADR-9). Run from `frontend/`: `npm run dev` (dev server, port 3000), `npm run build`, `npm run lint`. Type-check: `npx tsc --noEmit`.
 - Before declaring a task done: backend tests, frontend tests, lint, and typecheck must all pass.
 
 ## Architecture — backend (thin controllers, logic in modules)
