@@ -5,5 +5,15 @@
   "buttons": {
     "save": "Запази",
     "cancel": "Отказ"
+  },
+  "nav": {
+    "dashboard": "Табло",
+    "tools": "Инструменти",
+    "profile": "Профил",
+    "openMenu": "Отвори менюто",
+    "closeMenu": "Затвори менюто",
+    "logout": "Изход",
+    "roleOwner": "Собственик",
+    "placeholderUser": "{name} ({role})"
   }
 }

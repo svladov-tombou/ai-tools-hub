@@ -5,5 +5,15 @@
   "buttons": {
     "save": "Save",
     "cancel": "Cancel"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "tools": "Tools",
+    "profile": "Profile",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "logout": "Logout",
+    "roleOwner": "Owner",
+    "placeholderUser": "{name} ({role})"
   }
 }
