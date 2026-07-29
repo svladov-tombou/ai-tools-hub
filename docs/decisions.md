@@ -133,3 +133,15 @@ Append-only. Never edit a past ADR — when a decision changes, add a new ADR an
 **Decision:** Create a `tools` table with fields: name (string), description (text), url (string — link to the tool), documentation_url (string, nullable), video_url (string, nullable), difficulty (string enum nullable: beginner/intermediate/advanced), status (string enum: draft/published, default published), created_by (foreignId to users, nullable, nullOnDelete — audit trail per Day 9). Two many-to-many relations via pivots: category_tool (a tool belongs to multiple categories) and role_tool (a tool is "relevant for" multiple roles — a tag, NOT an access filter). A `categories` table: name (string, unique), slug (string, unique). All textual tool fields (name, description) are designed to be searchable.
 
 **Consequences:** Roles now serve two distinct purposes — user access/authority (ADR-10, e.g. who can moderate) AND tool relevance tags (this ADR); these are independent uses of the same roles table. The `status` column defaults to published so today everything is visible immediately (matches the "open sharing" intent); Day 9 can activate moderation by using draft status without a migration. `created_by` gives the audit trail cheaply now rather than via a later migration. No permissions layer still (per ADR-10). Read access to the catalog is universal; role-based restrictions, if any, will apply only to write/moderate actions, enforced on the backend.
+
+---
+
+## ADR-12: Tool write authorization — authors edit their own; owner and pm moderate all tools
+
+**Status:** Accepted
+
+**Context:** The catalog is public to read (any authenticated user sees all tools, per ADR-11). For write actions the developer chose an explicit role-name policy (not the level-based hierarchy from ADR-10 — level is unused here on purpose, in favor of explicit, readable role checks). Note: "owner" is a company/platform-level role (owner of the organization), NOT the owner of an individual tool; tool ownership is tracked separately via created_by.
+
+**Decision:** (1) Read (index, show): any authenticated user, all tools. (2) Create: any authenticated user. (3) Edit/delete: the tool's author (created_by == current user) may edit/delete their OWN tool; users with the owner OR pm role may edit/delete ANY tool (they are catalog administrators/moderators). Other roles (qa, backend, frontend, designer) may only edit/delete tools they created. Checks use explicit hasRole('owner') / hasRole('pm') plus author comparison, not level thresholds. Tools with a null created_by can only be edited/deleted by owner or pm.
+
+**Consequences:** Enforced on the backend via a Tool policy (ToolPolicy) — frontend checks are UX only (ADR-6/ADR-10). owner and pm are the two administrative roles over the catalog. Level-based authorization remains available but unused for tool writes; if the admin role set changes, add a new ADR.

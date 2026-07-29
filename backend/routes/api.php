@@ -20,4 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/tools', [ToolController::class, 'index']);
     Route::get('/tools/{tool}', [ToolController::class, 'show']);
+    Route::post('/tools', [ToolController::class, 'store']);
+    Route::put('/tools/{tool}', [ToolController::class, 'update']);
+    Route::delete('/tools/{tool}', [ToolController::class, 'destroy']);
 });
