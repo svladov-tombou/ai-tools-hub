@@ -13,7 +13,26 @@
     "openMenu": "Отвори менюто",
     "closeMenu": "Затвори менюто",
     "logout": "Изход",
-    "roleOwner": "Собственик",
-    "placeholderUser": "{name} ({role})"
+    "placeholderUser": "{name} ({roles})"
+  },
+  "roles": {
+    "owner": "Собственик",
+    "pm": "Проект мениджър",
+    "manager": "Мениджър",
+    "employee": "Служител"
+  },
+  "dashboard": {
+    "greeting": "Здравей, {name}!",
+    "rolesLabel": "Твоите роли: {roles}",
+    "cards": {
+      "tools": {
+        "title": "Инструменти",
+        "description": "Разгледай и открий AI инструменти, споделени от екипите."
+      },
+      "profile": {
+        "title": "Профил",
+        "description": "Прегледай своя профил и ролите, които имаш."
+      }
+    }
   }
 }

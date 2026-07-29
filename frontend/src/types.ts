@@ -1,1 +1,1 @@
-export type Role = "owner" | "pm" | "qa" | "backend" | "frontend" | "designer";
+export type Role = "owner" | "pm" | "manager" | "employee";

@@ -13,7 +13,26 @@
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "logout": "Logout",
-    "roleOwner": "Owner",
-    "placeholderUser": "{name} ({role})"
+    "placeholderUser": "{name} ({roles})"
+  },
+  "roles": {
+    "owner": "Owner",
+    "pm": "Project Manager",
+    "manager": "Manager",
+    "employee": "Employee"
+  },
+  "dashboard": {
+    "greeting": "Hello, {name}!",
+    "rolesLabel": "Your roles: {roles}",
+    "cards": {
+      "tools": {
+        "title": "Tools",
+        "description": "Browse and discover AI tools shared by teams."
+      },
+      "profile": {
+        "title": "Profile",
+        "description": "View your profile and roles."
+      }
+    }
   }
 }
