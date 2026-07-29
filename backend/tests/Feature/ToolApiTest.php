@@ -95,7 +95,7 @@ test('an authenticated user can create a tool with categories and roles attached
     Sanctum::actingAs($user);
 
     $category = Category::create(['name' => 'Productivity', 'slug' => 'productivity']);
-    $role = makeRole('backend', 40);
+    $role = makeRole('manager', 40);
 
     $response = $this->postJson('/api/tools', [
         'name' => 'New Tool',
