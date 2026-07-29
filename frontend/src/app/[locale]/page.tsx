@@ -1,4 +1,5 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function Home({
   params,
@@ -11,9 +12,18 @@ export default async function Home({
   const t = await getTranslations("common");
 
   return (
-    <div className="flex flex-col flex-1 items-center justify-center">
-      <h1>{t("app.title")}</h1>
-      <p>{t("buttons.save")}</p>
+    <div className="flex flex-col flex-1 items-center justify-center gap-4">
+      <ThemeToggle />
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-6">
+        <h1 className="text-text-primary">{t("app.title")}</h1>
+        <p className="text-text-secondary">{t("buttons.save")}</p>
+        <button
+          type="button"
+          className="rounded-md bg-accent px-4 py-2 text-accent-foreground"
+        >
+          {t("buttons.save")}
+        </button>
+      </div>
     </div>
   );
 }
