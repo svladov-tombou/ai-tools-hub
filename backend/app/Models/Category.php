@@ -6,14 +6,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-#[Fillable(['name', 'display_name', 'level'])]
-class Role extends Model
+#[Fillable(['name', 'slug'])]
+class Category extends Model
 {
-    public function users(): BelongsToMany
-    {
-        return $this->belongsToMany(User::class);
-    }
-
     public function tools(): BelongsToMany
     {
         return $this->belongsToMany(Tool::class);

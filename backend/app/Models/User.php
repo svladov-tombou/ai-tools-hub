@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -50,5 +51,10 @@ class User extends Authenticatable
     public function highestRole(): ?Role
     {
         return $this->roles->sortByDesc('level')->first();
+    }
+
+    public function createdTools(): HasMany
+    {
+        return $this->hasMany(Tool::class, 'created_by');
     }
 }
