@@ -1,0 +1,9 @@
+{
+  "app": {
+    "title": "AI Tools Hub"
+  },
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel"
+  }
+}
