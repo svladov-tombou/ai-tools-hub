@@ -1,4 +1,4 @@
-import type { Role } from "@/types";
+import type { Category, Role, RoleOption, Tool } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost/api";
 const TOKEN_KEY = "auth_token";
@@ -91,4 +91,68 @@ export async function getCurrentUser(): Promise<User | null> {
   if (!response.ok) return null;
 
   return normalizeUser(await response.json());
+}
+
+export type ToolsPage = {
+  tools: Tool[];
+  currentPage: number;
+  lastPage: number;
+  total: number;
+};
+
+export type ToolsQuery = {
+  search?: string;
+  category?: string;
+  role?: string;
+  page?: number;
+};
+
+type ToolsEnvelope = {
+  data: Tool[];
+  current_page: number;
+  last_page: number;
+  total: number;
+};
+
+export async function getTools(query: ToolsQuery = {}): Promise<ToolsPage> {
+  const params = new URLSearchParams();
+  if (query.search) params.set("search", query.search);
+  if (query.category) params.set("category", query.category);
+  if (query.role) params.set("role", query.role);
+  if (query.page) params.set("page", String(query.page));
+
+  const queryString = params.toString();
+  const response = await request(`/tools${queryString ? `?${queryString}` : ""}`);
+
+  if (!response.ok) {
+    throw new Error("Unable to load tools. Please try again.");
+  }
+
+  const data: ToolsEnvelope = await response.json();
+  return {
+    tools: data.data,
+    currentPage: data.current_page,
+    lastPage: data.last_page,
+    total: data.total,
+  };
+}
+
+export async function getCategories(): Promise<Category[]> {
+  const response = await request("/categories");
+
+  if (!response.ok) {
+    throw new Error("Unable to load categories. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function getRoles(): Promise<RoleOption[]> {
+  const response = await request("/roles");
+
+  if (!response.ok) {
+    throw new Error("Unable to load roles. Please try again.");
+  }
+
+  return response.json();
 }
