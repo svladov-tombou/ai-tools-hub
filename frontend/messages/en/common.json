@@ -43,5 +43,32 @@
     "submitting": "Signing in…",
     "invalidCredentials": "Incorrect email or password.",
     "genericError": "Something went wrong. Please try again."
+  },
+  "tools": {
+    "title": "AI Tools",
+    "totalCount": "{count} tools total",
+    "empty": "No tools have been added yet.",
+    "loading": "Loading tools…",
+    "error": "Something went wrong loading tools. Please try again.",
+    "draftBadge": "Draft",
+    "links": {
+      "open": "Open tool",
+      "documentation": "Documentation",
+      "video": "Video"
+    },
+    "difficulty": {
+      "beginner": "Beginner",
+      "intermediate": "Intermediate",
+      "advanced": "Advanced"
+    },
+    "emptyFiltered": "No tools match these filters.",
+    "filters": {
+      "searchPlaceholder": "Search tools…",
+      "searchAriaLabel": "Search tools by name or description",
+      "categoryLabel": "Category",
+      "roleLabel": "Role",
+      "allCategories": "All categories",
+      "allRoles": "All roles"
+    }
   }
 }
