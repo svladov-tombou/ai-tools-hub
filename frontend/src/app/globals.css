@@ -13,6 +13,8 @@
   --mint-foreground: #04342C;
   --peach: #F0997B;
   --peach-foreground: #993C1D;
+  --error: #C0392B;
+  --error-foreground: #FFFFFF;
 }
 
 .dark {
@@ -22,6 +24,7 @@
   --border: #294039;
   --text-primary: #EAF5F0;
   --text-secondary: #9DB4AC;
+  --error: #F08C7A;
 }
 
 @theme {
@@ -38,6 +41,8 @@
   --color-accent-foreground: var(--mint-foreground);
   --color-secondary: var(--peach);
   --color-secondary-foreground: var(--peach-foreground);
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
 }
 
 @theme inline {

@@ -34,5 +34,14 @@
         "description": "Прегледай своя профил и ролите, които имаш."
       }
     }
+  },
+  "auth": {
+    "loginTitle": "Вход",
+    "emailLabel": "Имейл",
+    "passwordLabel": "Парола",
+    "submit": "Влез",
+    "submitting": "Влизане…",
+    "invalidCredentials": "Грешен имейл или парола.",
+    "genericError": "Възникна грешка. Опитайте отново."
   }
 }

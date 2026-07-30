@@ -34,5 +34,14 @@
         "description": "View your profile and roles."
       }
     }
+  },
+  "auth": {
+    "loginTitle": "Sign in",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "invalidCredentials": "Incorrect email or password.",
+    "genericError": "Something went wrong. Please try again."
   }
 }

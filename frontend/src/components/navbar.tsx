@@ -6,6 +6,7 @@ import { Link } from "@/i18n/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { UserMenu } from "@/components/user-menu";
+import { useAuth } from "@/lib/auth-context";
 import { NAV_LINKS } from "@/lib/nav-links";
 
 function NavLinksList({
@@ -16,6 +17,15 @@ function NavLinksList({
   onNavigate?: () => void;
 }) {
   const t = useTranslations("common");
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <nav className={className}>
