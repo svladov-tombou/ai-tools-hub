@@ -34,6 +34,8 @@ class StoreToolRequest extends FormRequest
             'category_ids.*' => ['exists:categories,id'],
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['exists:roles,id'],
+            'department_ids' => ['nullable', 'array'],
+            'department_ids.*' => ['exists:departments,id'],
         ];
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Category;
+use App\Models\Department;
 use App\Models\Role;
 use App\Models\Tool;
 use App\Models\User;
@@ -86,6 +87,46 @@ test('category filter returns only tools in that category', function () {
 
     expect($response->json('data'))->toHaveCount(1);
     expect($response->json('data.0.name'))->toBe('In Category');
+});
+
+// DEPARTMENT FILTER
+
+test('department filter returns only tools in that department', function () {
+    Sanctum::actingAs(User::factory()->create());
+
+    $department = Department::create(['name' => 'Marketing', 'slug' => 'marketing']);
+
+    $matching = makeTool(['name' => 'In Department']);
+    $matching->departments()->attach($department);
+
+    makeTool(['name' => 'Not In Department']);
+
+    $response = $this->getJson('/api/tools?department=marketing')->assertOk();
+
+    expect($response->json('data'))->toHaveCount(1);
+    expect($response->json('data.0.name'))->toBe('In Department');
+});
+
+test('department and category filters combine as AND, not OR', function () {
+    Sanctum::actingAs(User::factory()->create());
+
+    $marketing = Department::create(['name' => 'Marketing', 'slug' => 'marketing']);
+    $writing = Category::create(['name' => 'Writing', 'slug' => 'writing']);
+
+    // Tool A matches BOTH filters
+    $both = makeTool(['name' => 'Both']);
+    $both->departments()->attach($marketing);
+    $both->categories()->attach($writing);
+
+    // Tool B matches ONLY the category
+    $categoryOnly = makeTool(['name' => 'Category Only']);
+    $categoryOnly->categories()->attach($writing);
+
+    $response = $this->getJson('/api/tools?department=marketing&category=writing')->assertOk();
+
+    // AND => 1 (only "Both"); OR would wrongly return 2
+    expect($response->json('data'))->toHaveCount(1);
+    expect($response->json('data.0.name'))->toBe('Both');
 });
 
 // CREATE

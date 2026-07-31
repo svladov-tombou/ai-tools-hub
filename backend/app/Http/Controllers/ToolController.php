@@ -12,20 +12,20 @@ class ToolController extends Controller
     public function index(Request $request)
     {
         return Tool::filter($request)
-            ->with(['categories', 'roles', 'creator'])
+            ->with(['categories', 'roles', 'departments', 'creator'])
             ->paginate(15);
     }
 
     public function show(Tool $tool)
     {
-        return $tool->load('categories', 'roles', 'creator');
+        return $tool->load('categories', 'roles', 'departments', 'creator');
     }
 
     public function store(StoreToolRequest $request)
     {
         $this->authorize('create', Tool::class);
 
-        $tool = Tool::create($request->safe()->except(['category_ids', 'role_ids']));
+        $tool = Tool::create($request->safe()->except(['category_ids', 'role_ids', 'department_ids']));
         $tool->created_by = $request->user()->id;
         $tool->save();
 
@@ -37,8 +37,12 @@ class ToolController extends Controller
             $tool->roles()->sync($request->input('role_ids', []));
         }
 
+        if ($request->has('department_ids')) {
+            $tool->departments()->sync($request->input('department_ids', []));
+        }
+
         return response()->json(
-            $tool->load('categories', 'roles', 'creator'),
+            $tool->load('categories', 'roles', 'departments', 'creator'),
             201
         );
     }
@@ -47,7 +51,7 @@ class ToolController extends Controller
     {
         $this->authorize('update', $tool);
 
-        $tool->update($request->safe()->except(['category_ids', 'role_ids']));
+        $tool->update($request->safe()->except(['category_ids', 'role_ids', 'department_ids']));
 
         if ($request->has('category_ids')) {
             $tool->categories()->sync($request->input('category_ids', []));
@@ -57,7 +61,11 @@ class ToolController extends Controller
             $tool->roles()->sync($request->input('role_ids', []));
         }
 
-        return $tool->load('categories', 'roles', 'creator');
+        if ($request->has('department_ids')) {
+            $tool->departments()->sync($request->input('department_ids', []));
+        }
+
+        return $tool->load('categories', 'roles', 'departments', 'creator');
     }
 
     public function destroy(Tool $tool)

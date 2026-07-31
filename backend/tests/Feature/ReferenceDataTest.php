@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Category;
+use App\Models\Department;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -62,4 +63,38 @@ test('roles are ordered by level descending', function () {
     $response = $this->getJson('/api/roles')->assertOk();
 
     expect($response->json('*.name'))->toBe(['owner', 'pm', 'employee']);
+});
+
+// DEPARTMENTS
+
+test('an unauthenticated request to list departments is rejected', function () {
+    $this->getJson('/api/departments')->assertStatus(401);
+});
+
+test('an authenticated user can list departments', function () {
+    Sanctum::actingAs(User::factory()->create());
+
+    Department::create(['name' => 'Marketing', 'slug' => 'marketing']);
+    Department::create(['name' => 'Sales', 'slug' => 'sales']);
+
+    $response = $this->getJson('/api/departments')->assertOk();
+
+    expect($response->json())->toBeArray();
+    expect($response->json())->toHaveCount(2);
+
+    foreach ($response->json() as $department) {
+        expect(array_keys($department))->toBe(['id', 'name', 'slug']);
+    }
+});
+
+test('departments are ordered by name ascending', function () {
+    Sanctum::actingAs(User::factory()->create());
+
+    Department::create(['name' => 'Gamma', 'slug' => 'gamma']);
+    Department::create(['name' => 'Alpha', 'slug' => 'alpha']);
+    Department::create(['name' => 'Beta', 'slug' => 'beta']);
+
+    $response = $this->getJson('/api/departments')->assertOk();
+
+    expect($response->json('*.name'))->toBe(['Alpha', 'Beta', 'Gamma']);
 });

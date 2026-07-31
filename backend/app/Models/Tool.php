@@ -22,6 +22,11 @@ class Tool extends Model
         return $this->belongsToMany(Role::class);
     }
 
+    public function departments(): BelongsToMany
+    {
+        return $this->belongsToMany(Department::class);
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -47,6 +52,10 @@ class Tool extends Model
                 $name = $request->string('role');
 
                 $query->whereHas('roles', fn (Builder $query) => $query->where('name', $name));
+            })
+            ->when($request->filled('department'), function (Builder $query) use ($request) {
+                $slug = $request->string('department');
+                $query->whereHas('departments', fn (Builder $query) => $query->where('slug', $slug));
             });
     }
 }

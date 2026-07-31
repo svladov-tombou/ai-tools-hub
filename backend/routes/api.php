@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ToolController;
 use Illuminate\Http\Request;
@@ -28,4 +29,5 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/categories', [CategoryController::class, 'index']);
     Route::get('/roles', [RoleController::class, 'index']);
+    Route::get('/departments', [DepartmentController::class, 'index']);
 });
