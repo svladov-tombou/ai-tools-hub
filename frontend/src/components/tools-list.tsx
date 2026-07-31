@@ -14,6 +14,7 @@ export function ToolsList() {
   const search = searchParams.get("search") ?? "";
   const category = searchParams.get("category") ?? "";
   const role = searchParams.get("role") ?? "";
+  const department = searchParams.get("department") ?? "";
 
   const [tools, setTools] = useState<Tool[]>([]);
   const [total, setTotal] = useState(0);
@@ -28,7 +29,7 @@ export function ToolsList() {
       setError(false);
 
       try {
-        const page = await getTools({ search, category, role });
+        const page = await getTools({ search, category, role, department });
         if (!isMounted) return;
         setTools(page.tools);
         setTotal(page.total);
@@ -46,9 +47,9 @@ export function ToolsList() {
     return () => {
       isMounted = false;
     };
-  }, [search, category, role]);
+  }, [search, category, role, department]);
 
-  const hasActiveFilters = Boolean(search || category || role);
+  const hasActiveFilters = Boolean(search || category || role || department);
 
   function renderResults() {
     if (isLoading) {

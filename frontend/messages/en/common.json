@@ -21,6 +21,20 @@
     "manager": "Manager",
     "employee": "Employee"
   },
+  "departments": {
+    "marketing": "Marketing",
+    "accounting": "Accounting",
+    "it": "IT",
+    "projects": "Projects",
+    "commercial": "Commercial",
+    "sales": "Sales",
+    "network": "Store Network",
+    "production": "Production",
+    "customer_support": "Customer Support",
+    "administration": "Administration",
+    "tender": "Public Procurement",
+    "telesales": "Telesales"
+  },
   "dashboard": {
     "greeting": "Hello, {name}!",
     "rolesLabel": "Your roles: {roles}",
@@ -51,6 +65,10 @@
     "loading": "Loading tools…",
     "error": "Something went wrong loading tools. Please try again.",
     "draftBadge": "Draft",
+    "categoriesLabel": "Categories",
+    "departmentsLabel": "Departments",
+    "rolesLabel": "Roles",
+    "difficultyLabel": "Difficulty",
     "links": {
       "open": "Open tool",
       "documentation": "Documentation",
@@ -68,7 +86,9 @@
       "categoryLabel": "Category",
       "roleLabel": "Role",
       "allCategories": "All categories",
-      "allRoles": "All roles"
+      "allRoles": "All roles",
+      "departmentLabel": "Department",
+      "allDepartments": "All departments"
     }
   }
 }

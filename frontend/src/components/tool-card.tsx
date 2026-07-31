@@ -17,21 +17,53 @@ export function ToolCard({ tool }: { tool: Tool }) {
         )}
       </div>
 
-      <p className="text-sm text-text-secondary">{tool.description}</p>
+      <p className="text-sm text-text-secondary line-clamp-3">{tool.description}</p>
 
-      <div className="flex flex-wrap gap-2">
-        {tool.categories.map((category) => (
-          <span
-            key={category.id}
-            className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary"
-          >
-            {category.name}
-          </span>
-        ))}
+      <div className="flex flex-col gap-2 text-sm">
+        {tool.categories.length > 0 && (
+          <div>
+            <span className="font-semibold text-text-primary">
+              {t("tools.categoriesLabel")}:
+            </span>
+            <p className="text-text-secondary">
+              {tool.categories.map((category) => category.name).join(", ")}
+            </p>
+          </div>
+        )}
+
+        {tool.departments.length > 0 && (
+          <div>
+            <span className="font-semibold text-text-primary">
+              {t("tools.departmentsLabel")}:
+            </span>
+            <p className="text-text-secondary">
+              {tool.departments
+                .map((department) => t(`departments.${department.slug}`))
+                .join(", ")}
+            </p>
+          </div>
+        )}
+
+        {tool.roles.length > 0 && (
+          <div>
+            <span className="font-semibold text-text-primary">
+              {t("tools.rolesLabel")}:
+            </span>
+            <p className="text-text-secondary">
+              {tool.roles.map((role) => t(`roles.${role.name}`)).join(", ")}
+            </p>
+          </div>
+        )}
+
         {tool.difficulty && (
-          <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
-            {t(`tools.difficulty.${tool.difficulty}`)}
-          </span>
+          <p>
+            <span className="font-semibold text-text-primary">
+              {t("tools.difficultyLabel")}:
+            </span>{" "}
+            <span className="text-text-secondary">
+              {t(`tools.difficulty.${tool.difficulty}`)}
+            </span>
+          </p>
         )}
       </div>
 

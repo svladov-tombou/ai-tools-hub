@@ -21,6 +21,20 @@
     "manager": "Мениджър",
     "employee": "Служител"
   },
+  "departments": {
+    "marketing": "Маркетинг",
+    "accounting": "Счетоводство",
+    "it": "ИТ",
+    "projects": "Проекти",
+    "commercial": "Търговски",
+    "sales": "Продажби",
+    "network": "Магазинна мрежа",
+    "production": "Производство",
+    "customer_support": "Обслужване на клиенти",
+    "administration": "Администрация",
+    "tender": "Обществени поръчки",
+    "telesales": "Продажби по телефона"
+  },
   "dashboard": {
     "greeting": "Здравей, {name}!",
     "rolesLabel": "Твоите роли: {roles}",
@@ -51,6 +65,10 @@
     "loading": "Зареждане на инструменти…",
     "error": "Възникна грешка при зареждането на инструментите. Опитайте отново.",
     "draftBadge": "Чернова",
+    "categoriesLabel": "Категории",
+    "departmentsLabel": "Отдели",
+    "rolesLabel": "Роли",
+    "difficultyLabel": "Трудност",
     "links": {
       "open": "Отвори инструмента",
       "documentation": "Документация",
@@ -68,7 +86,9 @@
       "categoryLabel": "Категория",
       "roleLabel": "Роля",
       "allCategories": "Всички категории",
-      "allRoles": "Всички роли"
+      "allRoles": "Всички роли",
+      "departmentLabel": "Отдел",
+      "allDepartments": "Всички отдели"
     }
   }
 }

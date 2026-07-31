@@ -2,6 +2,22 @@ export type Role = "owner" | "pm" | "manager" | "employee";
 
 export type Category = { id: number; name: string; slug: string };
 
+export type DepartmentSlug =
+  | "marketing"
+  | "accounting"
+  | "it"
+  | "projects"
+  | "commercial"
+  | "sales"
+  | "network"
+  | "production"
+  | "customer_support"
+  | "administration"
+  | "tender"
+  | "telesales";
+
+export type Department = { id: number; name: string; slug: DepartmentSlug };
+
 export type RoleOption = {
   id: number;
   name: Role;
@@ -25,5 +41,6 @@ export type Tool = {
   updated_at: string;
   categories: Category[];
   roles: RoleOption[];
+  departments: Department[];
   creator: { id: number; name: string; email: string } | null;
 };

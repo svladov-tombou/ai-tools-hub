@@ -1,4 +1,4 @@
-import type { Category, Role, RoleOption, Tool } from "@/types";
+import type { Category, Department, Role, RoleOption, Tool } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost/api";
 const TOKEN_KEY = "auth_token";
@@ -104,6 +104,7 @@ export type ToolsQuery = {
   search?: string;
   category?: string;
   role?: string;
+  department?: string;
   page?: number;
 };
 
@@ -119,6 +120,7 @@ export async function getTools(query: ToolsQuery = {}): Promise<ToolsPage> {
   if (query.search) params.set("search", query.search);
   if (query.category) params.set("category", query.category);
   if (query.role) params.set("role", query.role);
+  if (query.department) params.set("department", query.department);
   if (query.page) params.set("page", String(query.page));
 
   const queryString = params.toString();
@@ -154,5 +156,13 @@ export async function getRoles(): Promise<RoleOption[]> {
     throw new Error("Unable to load roles. Please try again.");
   }
 
+  return response.json();
+}
+
+export async function getDepartments(): Promise<Department[]> {
+  const response = await request("/departments");
+  if (!response.ok) {
+    throw new Error("Unable to load departments. Please try again.");
+  }
   return response.json();
 }

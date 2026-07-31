@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Category;
+use App\Models\Department;
 use App\Models\Role;
 use App\Models\Tool;
 use App\Models\User;
@@ -33,6 +34,7 @@ class ToolSeeder extends Seeder
                 'status' => 'published',
                 'categories' => ['writing', 'productivity'],
                 'roles' => ['owner', 'pm', 'manager', 'employee'],
+                'departments' => ['marketing', 'accounting', 'it', 'projects', 'commercial', 'sales', 'network', 'production', 'customer_support', 'administration', 'tender', 'telesales'],
             ],
             [
                 'name' => 'Claude',
@@ -44,6 +46,7 @@ class ToolSeeder extends Seeder
                 'status' => 'published',
                 'categories' => ['writing', 'code-assistants'],
                 'roles' => ['owner', 'pm', 'employee'],
+                'departments' => ['marketing', 'accounting', 'it', 'projects', 'commercial', 'sales', 'network', 'production', 'customer_support', 'administration', 'tender', 'telesales'],
             ],
             [
                 'name' => 'GitHub Copilot',
@@ -55,6 +58,7 @@ class ToolSeeder extends Seeder
                 'status' => 'published',
                 'categories' => ['code-assistants'],
                 'roles' => ['manager', 'employee'],
+                'departments' => ['it', 'projects'],
             ],
             [
                 'name' => 'Midjourney',
@@ -66,6 +70,7 @@ class ToolSeeder extends Seeder
                 'status' => 'published',
                 'categories' => ['image-generation'],
                 'roles' => ['pm', 'employee'],
+                'departments' => ['marketing'],
             ],
             [
                 'name' => 'Cursor',
@@ -77,6 +82,7 @@ class ToolSeeder extends Seeder
                 'status' => 'draft',
                 'categories' => ['code-assistants', 'productivity'],
                 'roles' => ['manager', 'employee'],
+                'departments' => ['it', 'projects'],
             ],
             [
                 'name' => 'Notion AI',
@@ -88,6 +94,7 @@ class ToolSeeder extends Seeder
                 'status' => 'published',
                 'categories' => ['productivity', 'writing'],
                 'roles' => ['owner', 'pm', 'employee'],
+                'departments' => ['marketing', 'projects', 'administration', 'accounting'],
             ],
             [
                 'name' => 'Perplexity',
@@ -99,6 +106,7 @@ class ToolSeeder extends Seeder
                 'status' => 'published',
                 'categories' => ['data-analytics', 'productivity'],
                 'roles' => ['pm', 'manager', 'employee'],
+                'departments' => ['marketing', 'tender', 'commercial'],
             ],
             [
                 'name' => 'ElevenLabs',
@@ -110,13 +118,15 @@ class ToolSeeder extends Seeder
                 'status' => 'published',
                 'categories' => ['productivity'],
                 'roles' => ['pm', 'employee'],
+                'departments' => ['marketing', 'telesales'],
             ],
         ];
 
         foreach ($tools as $data) {
             $categorySlugs = $data['categories'];
             $roleNames = $data['roles'];
-            unset($data['categories'], $data['roles']);
+            $departmentSlugs = $data['departments'];
+            unset($data['categories'], $data['roles'], $data['departments']);
 
             $tool = Tool::create($data);
             $tool->created_by = $createdBy;
@@ -127,6 +137,9 @@ class ToolSeeder extends Seeder
 
             $roleIds = Role::whereIn('name', $roleNames)->pluck('id');
             $tool->roles()->sync($roleIds);
+
+            $departmentIds = Department::whereIn('slug', $departmentSlugs)->pluck('id');
+            $tool->departments()->sync($departmentIds);
         }
     }
 }
