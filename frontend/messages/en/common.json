@@ -60,6 +60,7 @@
   },
   "tools": {
     "title": "AI Tools",
+    "addButton": "Add tool",
     "totalCount": "{count} tools total",
     "empty": "No tools have been added yet.",
     "loading": "Loading tools…",
@@ -89,6 +90,35 @@
       "allRoles": "All roles",
       "departmentLabel": "Department",
       "allDepartments": "All departments"
+    },
+    "form": {
+      "newTitle": "New tool",
+      "nameLabel": "Name",
+      "descriptionLabel": "Description",
+      "descriptionCounter": "{count} / 5000",
+      "urlLabel": "Tool URL",
+      "documentationUrlLabel": "Documentation link",
+      "videoUrlLabel": "Video link",
+      "difficultyLabel": "Difficulty",
+      "difficultyNone": "Not specified",
+      "statusLabel": "Status",
+      "status": {
+        "draft": "Draft",
+        "published": "Published"
+      },
+      "optional": "(optional)",
+      "categoriesHeading": "Categories",
+      "rolesHeading": "Roles",
+      "rolesHint": "Roles indicate who the tool is suitable for. They do not restrict access to it.",
+      "departmentsHeading": "Departments",
+      "selectAll": "Select all",
+      "clearAll": "Clear",
+      "confirmCancel": "You have unsaved changes. Are you sure you want to leave?",
+      "optionsError": "Failed to load categories, roles and departments.",
+      "submitting": "Saving…",
+      "created": "The tool was added.",
+      "validationFailed": "Please correct the highlighted fields.",
+      "genericError": "Something went wrong while saving. Please try again."
     }
   }
 }

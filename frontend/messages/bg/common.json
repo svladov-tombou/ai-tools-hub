@@ -60,6 +60,7 @@
   },
   "tools": {
     "title": "AI инструменти",
+    "addButton": "Добави инструмент",
     "totalCount": "Общо {count} инструмента",
     "empty": "Все още няма добавени инструменти.",
     "loading": "Зареждане на инструменти…",
@@ -89,6 +90,35 @@
       "allRoles": "Всички роли",
       "departmentLabel": "Отдел",
       "allDepartments": "Всички отдели"
+    },
+    "form": {
+      "newTitle": "Нов инструмент",
+      "nameLabel": "Име",
+      "descriptionLabel": "Описание",
+      "descriptionCounter": "{count} / 5000",
+      "urlLabel": "Адрес на инструмента",
+      "documentationUrlLabel": "Линк към документация",
+      "videoUrlLabel": "Линк към видео",
+      "difficultyLabel": "Трудност",
+      "difficultyNone": "Не е посочена",
+      "statusLabel": "Статус",
+      "status": {
+        "draft": "Чернова",
+        "published": "Публикуван"
+      },
+      "optional": "(незадължително)",
+      "categoriesHeading": "Категории",
+      "rolesHeading": "Роли",
+      "rolesHint": "Ролите показват за кого е подходящ инструментът. Те не ограничават достъпа до него.",
+      "departmentsHeading": "Отдели",
+      "selectAll": "Избери всички",
+      "clearAll": "Изчисти",
+      "confirmCancel": "Има незапазени промени. Сигурни ли сте, че искате да излезете?",
+      "optionsError": "Грешка при зареждане на категориите, ролите и отделите.",
+      "submitting": "Запазване…",
+      "created": "Инструментът е добавен.",
+      "validationFailed": "Моля, поправете отбелязаните полета.",
+      "genericError": "Възникна грешка при запазването. Опитайте отново."
     }
   }
 }

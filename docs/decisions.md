@@ -304,3 +304,65 @@ turning red. The frontend modal must use the same number for `maxLength`.
   32,000 characters with an opaque MySQL error instead of a clean 422 response.
 - Frontend-only validation — rejected: trivially bypassed; security belongs on the backend.
 
+---
+
+## ADR-23: Add-tool form on a dedicated page, not in a modal
+
+**Status:** Accepted
+
+**Context:** Creating a tool needs ten inputs, including a 5000-character description and
+three multi-selects (5 categories, 4 roles, 12 departments). The original plan was a modal.
+Current UX guidance is consistent that complex multi-field forms belong on their own page,
+and that no modal should occupy most of the screen — content that needs a full screen is a
+page, not an overlay. Desktop modal patterns also break on mobile, where a virtual keyboard
+fights an overlay. Reading the catalogue on a phone is a realistic scenario; authoring a
+tool with a long description is a deliberate at-the-desk task, so the form does not need to
+excel on mobile but must not be broken there either.
+
+**Decision:** A dedicated route `/tools/new`, constrained to max-w-3xl. The form component
+is deliberately mode-agnostic: it accepts `initialValues?: ToolPayload` and
+`onSubmit: (payload) => Promise<unknown>` and knows nothing about create vs edit. A thin
+client wrapper (`new-tool-form.tsx`) supplies `createTool` and the redirect. Multi-selects
+are plain checkbox groups (`checkbox-group.tsx`, reused three times, text-sm, 3 columns for
+categories and departments, 2 for roles, with select-all/clear only for the 12 departments).
+Cancel uses `window.confirm` and only prompts when values differ from the initial state.
+Success is signalled via a `sessionStorage` flag read once by the list.
+
+**Consequences:**
+- Phase 2 (edit) is one page plus one API function, with ZERO changes to the form. This was
+  the main reason for the mode-agnostic split.
+- `ToolPayload` marks every field required, nullable ones as `| null` rather than optional.
+  This is deliberate: the controller uses `->safe()`, so an OMITTED field is not updated.
+  If clearing a documentation link merely omitted the field, the old value would silently
+  survive. The type system now forces the form to always send an explicit null.
+- `tool-form.tsx` exceeds the 200-line guideline (~240). Accepted knowingly: the remaining
+  duplication is seven label/input/error blocks, and extracting a wrapper was judged not
+  worth the indirection for this file.
+- Laravel returns validation messages in English, so a Bulgarian UI shows English field
+  errors. Backend localisation is deferred; recorded as debt.
+- Category names are NOT translated (unlike departments and roles, which go through `t()`
+  on fixed slugs). Categories are free-form user data and will become editable via
+  Settings, so a typed dictionary cannot cover them. Their names are therefore
+  single-language by design and currently seeded in English.
+- The list has no `orderBy`, and pages hold 15 tools. Beyond 15 records, a newly created
+  tool lands on page 2 and will NOT be visible after the redirect, while the success banner
+  still claims it was added. Known limitation; fixed by sorting newest-first or by adding
+  pagination controls.
+
+**Alternatives considered:**
+- Modal with a larger max-width — rejected; contradicts the guidance above and adds focus
+  trap, Escape handling and scroll lock for no benefit.
+- Native `<select multiple>` — rejected; hostile on desktop, unusable on touch.
+- Combobox with chips — rejected; either ~150 lines of hand-rolled accessibility or the
+  project's first UI dependency.
+- Carrying active filters through to the form and back after save — deliberately NOT built.
+  Cancel returns via `router.back()`, which preserves them for free. After a successful
+  save, restoring filters can be actively worse: adding a Marketing tool while filtered to
+  IT would return the user to a list where the new tool is absent. The right behaviour is
+  a question for real users, so no three-link chain is built against a guess.
+- A toast context provider — rejected for now; it would touch `[locale]/layout.tsx` mid-phase
+  for two call sites. Worth revisiting once there are more.
+- `eslint-disable` or `queueMicrotask` for the `set-state-in-effect` warning on the banner —
+  rejected. The rule was correct: the flag is read once and never changes, so a lazy
+  `useState` initializer removes the extra render instead of hiding it.
+

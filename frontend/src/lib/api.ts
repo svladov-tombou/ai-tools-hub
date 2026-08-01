@@ -1,7 +1,14 @@
-import type { Category, Department, Role, RoleOption, Tool } from "@/types";
+import type { Category, Department, Difficulty, Role, RoleOption, Tool, ToolStatus } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost/api";
 const TOKEN_KEY = "auth_token";
+
+export class ValidationError extends Error {
+  constructor(message: string, public errors: Record<string, string[]>) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
 
 export type User = {
   id: number;
@@ -164,5 +171,36 @@ export async function getDepartments(): Promise<Department[]> {
   if (!response.ok) {
     throw new Error("Unable to load departments. Please try again.");
   }
+  return response.json();
+}
+
+export type ToolPayload = {
+  name: string;
+  description: string;
+  url: string;
+  documentation_url: string | null;
+  video_url: string | null;
+  difficulty: Difficulty | null;
+  status: ToolStatus;
+  category_ids: number[];
+  role_ids: number[];
+  department_ids: number[];
+};
+
+export async function createTool(payload: ToolPayload): Promise<Tool> {
+  const response = await request("/tools", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to save the tool. Please try again.");
+  }
+
   return response.json();
 }

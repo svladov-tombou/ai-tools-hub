@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
+import { Link } from "@/i18n/navigation";
 import { getTools } from "@/lib/api";
 import type { Tool } from "@/types";
 import { ToolCard } from "@/components/tool-card";
@@ -20,6 +21,13 @@ export function ToolsList() {
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [showCreated] = useState(
+    () => typeof window !== "undefined" && sessionStorage.getItem("tool_created") === "1",
+  );
+
+  useEffect(() => {
+    if (showCreated) sessionStorage.removeItem("tool_created");
+  }, [showCreated]);
 
   useEffect(() => {
     let isMounted = true;
@@ -84,6 +92,19 @@ export function ToolsList() {
 
   return (
     <div className="flex flex-col gap-6">
+      {showCreated ? (
+        <p className="rounded-md border border-accent px-3 py-2 text-sm text-text-primary">
+          {t("tools.form.created")}
+        </p>
+      ) : null}
+      <div className="flex justify-end">
+        <Link
+          href="/tools/new"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
+        >
+          {t("tools.addButton")}
+        </Link>
+      </div>
       <ToolsFilters />
       {renderResults()}
     </div>

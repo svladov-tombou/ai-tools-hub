@@ -27,6 +27,8 @@ export type RoleOption = {
 
 export type Difficulty = "beginner" | "intermediate" | "advanced";
 
+export type ToolStatus = "draft" | "published";
+
 export type Tool = {
   id: number;
   name: string;
@@ -35,7 +37,7 @@ export type Tool = {
   documentation_url: string | null;
   video_url: string | null;
   difficulty: Difficulty | null;
-  status: "draft" | "published";
+  status: ToolStatus;
   created_by: number | null;
   created_at: string;
   updated_at: string;
