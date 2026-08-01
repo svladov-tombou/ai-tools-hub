@@ -87,3 +87,9 @@ You append to `docs/decisions.md` and `docs/pitfalls.md` yourself, every phase.
 NEVER edit `CLAUDE.md` or `docs/workflow.md` on your own initiative — propose the exact
 replacement text and wait for the user to approve. If a rule here is wrong or outdated,
 say so; never silently work around it. Details in `docs/workflow.md`.
+
+## Long-running processes
+The user starts the environment: `sail up -d` in `backend/`, `npm run dev` in `frontend/`.
+Never start the frontend dev server yourself — it does not exit and would block the session.
+Check whether it is up with `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000`.
+If it is not running, ASK the user to start it and wait.
