@@ -413,3 +413,54 @@ covered by tests. Hiding the button is courtesy, not security.
 - Sending only changed fields on update — rejected. `UpdateToolRequest` uses `sometimes`,
   so an omitted field is left untouched; sending the full payload makes behaviour
   predictable and is why `ToolPayload` has no optional fields.
+
+---
+
+## ADR-25: Rewriting CLAUDE.md as a verified behavioural contract, plus docs/pitfalls.md
+**Status:** Accepted
+**Context:** CLAUDE.md had drifted from the code. An audit against the actual files found
+four defects, three of which would have caused real errors. The role list read
+`(owner, backend, frontend, pm, qa, designer)` — an early guess that was never corrected —
+while `RoleSeeder` defines exactly four roles with numeric levels: owner (100), pm (60),
+manager (40), employee (20). The next planned feature (draft/publish) is entirely about
+roles, so an agent following the file would have written policies against role names that
+do not exist. The Commands section contradicted itself, banning `npm` on the host eight
+lines above instructing `npm run dev` from `frontend/`. The definition of done required
+"frontend tests" to pass, but `frontend/package.json` has no test script and no test
+framework — an unsatisfiable rule, which is worse than no rule, because it teaches that
+the rules in this file are aspirational. And i18n was absent entirely, despite
+`messages/bg/common.json` being the TYPE SOURCE for `t()` and the most frequent source of
+build failures in this project.
+Every one of these was found by reading the actual file, not by reasoning about it.
+**Decision:** CLAUDE.md rewritten (89 lines) around what changes behaviour, ordered by
+importance rather than by convenience for a human reader. Three things are new.
+First, an explicit *stop and ask* list of eight decision categories, chosen by
+reversibility and ownership rather than by importance: schema changes beyond a nullable
+column, anything touching permissions, new external dependencies, changes to an existing
+API contract, product behaviour, introducing a new KIND of thing, revising a recorded ADR,
+and any ambiguity in the task. Placing a file inside an existing pattern is explicitly NOT
+in the list — a stop-and-ask list only works while every stop means something.
+Second, an i18n section, given the trap's cost history.
+Third, a rule that the agent appends to `docs/decisions.md` and `docs/pitfalls.md` itself,
+but never edits CLAUDE.md on its own initiative: it proposes replacement text and waits.
+An agent free to rewrite its own rules is not bound by them.
+A new `docs/pitfalls.md` holds the accumulated project-specific traps, previously carried
+only in session notes. It is pointed to, not inlined, so it can grow without spending
+CLAUDE.md's attention budget.
+No frontend test framework was added. Installing one is an ask-first decision and deserves
+its own phase and its own ADR, rather than arriving as a side effect of a documentation fix.
+**Consequences:**
+- The definition of done now states what is actually verifiable: full Pest suite, plus
+  `tsc --noEmit`, `lint`, `build`, plus a real browser check for UI work. It also states
+  explicitly that no frontend test framework exists and that installing one requires asking.
+- The file grew from 55 to 89 lines while removing content, because descriptive lines were
+  traded for behavioural ones. Anything an agent can learn in a second from the filesystem
+  was dropped.
+- `docs/pitfalls.md` carries two verification commands: a dictionary sync check, and a
+  file-size listing sorted by length. The size ceilings in CLAUDE.md are a request; the
+  command is a measurement. Rules that are only requests decay silently — that is precisely
+  how the role list stayed wrong.
+- Staleness is now an explicit obligation: at the end of a phase, anything learned that
+  contradicts CLAUDE.md, pitfalls, or an ADR must be reported rather than worked around.
+- Local agent and permission configuration lives outside the repository and is intentionally
+  not described here.

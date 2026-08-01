@@ -1,55 +1,89 @@
-# Project: AI Tools Hub (greenfield, internal company platform)
-Full-stack monorepo: teams share AI tools/libraries, categorize them, and discover them by role.
-Two apps in one repo: `/backend` (Laravel 13 API) + `/frontend` (Next.js SPA).
-Stack: Laravel 13 (PHP 8.3+), Next.js + React + TypeScript, MySQL, Redis — all in Docker.
-Global rules in `~/.claude/CLAUDE.md` apply. This file adds project specifics and overrides on conflict.
+# AI Tools Hub — project rules
+Internal company platform: teams share, categorize and discover AI tools.
+`backend/` Laravel 13 API (Sail, Docker) + `frontend/` Next.js 16 (host). Global rules in
+`~/.claude/CLAUDE.md` apply; this file overrides on conflict.
+
+## IMPORTANT: stop and ask the human
+Do not decide these yourself. Present options and wait. Asking costs seconds; a wrong choice here costs days.
+1. Database schema changes beyond adding a nullable column (renames, type changes, relation changes).
+2. Anything touching permissions, policies, or who can see/do what.
+3. Adding an external dependency (composer or npm package).
+4. Changing an existing API response shape, field name, or route.
+5. Product behaviour: what a feature does, edge cases, user-visible text decisions.
+6. Introducing a NEW KIND of thing the project does not have yet (a new layer, a new state model, a new top-level directory). Placing a file inside an existing pattern is not this.
+7. Anything that revises a decision already recorded in `docs/decisions.md`.
+8. Any ambiguity in the task. Report it and stop. Never invent the missing requirement.
+When unsure whether something qualifies, ask.
+
+## IMPORTANT: i18n — the most expensive trap here
+`messages/bg/common.json` is the TYPE SOURCE for `t()`. A key must exist there first or `tsc` fails.
+Add dictionary keys as their own step, before the code that uses them. Both `bg` and `en` stay in sync.
+Never silence a `t()` type error with `as never` or eslint-disable — that error is the check working.
+No hardcoded user-facing strings anywhere.
+
+## Roles
+Exactly four, seeded with a numeric `level`: owner (100), pm (60), manager (40), employee (20).
+Never invent role names. Authorization is enforced in the BACKEND (policies/middleware);
+frontend role checks are UX only, never the security boundary.
 
 ## Commands (run these; do not guess)
-- Everything runs in Docker. Do not run `php`, `composer`, `npm`, or `artisan` on the host — go through Sail / the containers.
-- Backend uses Laravel Sail. Run Sail commands from the `backend/` directory (that is where `compose.yaml` lives).
-- Start stack: `cd backend && ./vendor/bin/sail up -d` — Stop: `./vendor/bin/sail down` — Status: `./vendor/bin/sail ps`
-- Backend artisan: `./vendor/bin/sail artisan <cmd>`
-- Backend tests: `./vendor/bin/sail artisan test` (Pest)
-- Backend deps: `./vendor/bin/sail composer <cmd>`
-- Lint/format backend: `./vendor/bin/sail bin pint`
-- Frontend (Next.js) lives in `frontend/`, runs on the host via nvm Node 24 (see ADR-9). Run from `frontend/`: `npm run dev` (dev server, port 3000), `npm run build`, `npm run lint`. Type-check: `npx tsc --noEmit`.
-- Before declaring a task done: backend tests, frontend tests, lint, and typecheck must all pass.
+- Backend runs in Docker/Sail, from `backend/`: `./vendor/bin/sail up -d`, `./vendor/bin/sail artisan <cmd>`,
+  `./vendor/bin/sail composer <cmd>`, format with `./vendor/bin/sail bin pint`.
+- Backend tests: `./vendor/bin/sail artisan test` (Pest).
+- Frontend runs ON THE HOST (nvm Node 24), from `frontend/`: `npm run dev`, `npm run lint`, `npm run build`,
+  `npx tsc --noEmit`. Never run frontend commands inside a container.
+- `npm run build` requires the dev server to be STOPPED (both want `.next`).
 
-## Architecture — backend (thin controllers, logic in modules)
-- Controllers (`app/Http/Controllers/`) are the thin entry layer: validate input, call one action/service, return response. No business logic.
-- Business logic lives in focused single-purpose Action classes (`app/Actions/`) or Services (`app/Services/`). One public method, clear name.
-- Eloquent models hold relationships and scopes only — not workflow logic.
-- Form Requests (`app/Http/Requests/`) own validation rules. Controllers never inline validation.
-- API routes only (`routes/api.php`). This backend serves JSON, never Blade views.
+## Definition of done
+Backend: `sail artisan test` green (the FULL suite, not just new tests).
+Frontend: `npx tsc --noEmit` + `npm run lint` + `npm run build` all clean.
+UI work: verified in a real browser via Playwright MCP. Never claim UI works without opening it.
+There is NO frontend unit-test framework. Do not install one — that is an ask-first decision.
 
-## Architecture — frontend (thin components, logic in modules)
-- Components (`src/components/` or `app/`) are the thin entry layer: rendering + wiring only. No business logic, no raw `fetch` to Laravel.
-- All backend calls go through one API client (`src/lib/api.ts`) and focused modules under `src/lib/` (e.g. `src/lib/tools.ts`). Components call these.
-- Types live next to the logic they describe or in `src/types.ts`. No `any` — if a type is unknown, model it.
+## Architecture
+Backend: controllers are thin (validate, call one action, return). Business logic in
+`app/Actions/` or `app/Services/`, one public method each. Validation in Form Requests.
+Models hold relationships and scopes only. JSON only — never Blade.
+Frontend: components render and wire, nothing else. Every backend call goes through
+`src/lib/api.ts` — never a raw `fetch`. No `any`.
 
-## File size (target / ceiling — split by responsibility, never cut mid-logic)
-- Controllers / components: 30–80 / 150 lines.
-- Actions, services, logic modules: <100 / 200 lines.
-- Helpers, migrations, seeders, tests: looser / ~300 lines.
+## File size (target / ceiling)
+Controllers, components: 30–80 / 150. Actions, services, logic modules: <100 / 200.
+Helpers, migrations, seeders, tests: looser / ~300.
+Split by responsibility, never mid-logic. The ceiling is not a goal: if splitting a 220-line
+module would not make it clearer, leave it and say why.
 
-## Auth & security (token-based Sanctum — chosen deliberately, see ADR)
-- Auth is Laravel Sanctum API tokens (Bearer), NOT cookie/SPA session auth. Do not add `SANCTUM_STATEFUL_DOMAINS`, CSRF-cookie flows, or `withCredentials` — this project sends `Authorization: Bearer <token>`.
-- Frontend stores the token and attaches it in `src/lib/api.ts`; components never touch the token directly.
-- Role-based access (owner, backend, frontend, pm, qa, designer) is enforced on the BACKEND (policies/middleware). Frontend role checks are UX only — never the security boundary.
-- Secrets (`APP_KEY`, DB password, any keys) live in `.env` and are NEVER output or committed. Reading non-secret config (e.g. an URL) for diagnosis is fine.
-- `.gitignore` must ignore: `/vendor`, `/node_modules`, `.env` and `.env.*` (keep `.env.example`), `/backend/storage/*.key`, frontend build output (`.next/`, `dist/`), and `.playwright-mcp/`.
+## Security
+Auth is Sanctum Bearer tokens (ADR-6). Never add `SANCTUM_STATEFUL_DOMAINS`, CSRF cookies,
+or `withCredentials`. Token handling lives only in `src/lib/api.ts`.
+Never output or commit secret values.
 
-## Testing
-- Backend: Pest for actions/services and API endpoints. Test behavior (the JSON contract, the role rule), not implementation.
-- Frontend: Vitest for logic in `src/lib/`. Test behavior, not implementation.
-- IMPORTANT: for UI verification use the Playwright MCP browser tools — actually open the app in a browser, interact, and confirm the flow works. Do not claim the UI works without a browser check.
-- A test must assert the DESIRED behavior, never be trimmed to match current (possibly wrong) output.
-- IMPORTANT: never make tests pass by skipping, narrowing, or deleting them. No `.skip`/`.only`/`->skip()`, no commenting-out, no deleting a failing test. "Tests pass" means they actually ran and were green.
+## Tests
+IMPORTANT: never make a test pass by skipping, narrowing, or deleting it. No `.skip` / `.only`,
+no commenting out, no deleting a failing test. "Tests pass" means they ran and were green.
+A test must assert the DESIRED behaviour, and must FAIL if the behaviour is wrong —
+a test that passes either way proves nothing.
 
-## Autonomous work
-- Follow the global Escalation rule: pick the most conservative option that fits these conventions, proceed, and log non-trivial choices in `docs/decisions.md`.
-- After a working slice, commit (one logical change per commit).
+## Before you write code
+Read `docs/pitfalls.md` before touching the frontend, migrations, or seeders.
+Read `docs/workflow.md` for the order of work.
+Read the relevant ADRs in `docs/decisions.md` before implementing anything non-trivial.
+Every completed phase ends with a new ADR (append-only; never edit a past one —
+mark it `Superseded by ADR-N`) and one logical commit.
 
-## Decisions
-- Architectural decisions are recorded in `docs/decisions.md` (ADR format, append-only, English).
-- When you make or change a non-trivial architectural decision, add a new ADR. Never edit past ADRs — mark them `Superseded by ADR-N`.
+## Delegating to the coder subagent
+Reconnaissance, review, and running tests stay with you — do not delegate them.
+The subagent inherits this file but NOT the conversation: it cannot see what you read or discussed.
+State the complete desired end state in the prompt, never "finish the previous edit".
+The subagent cannot ask questions. If a prompt could be read two ways, resolve it before delegating.
+
+## Language
+Talk to the user in Bulgarian. Write code, comments, commit messages, ADRs and
+subagent prompts in English. `docs/decisions.md` is English-only — it is append-only,
+so a mixed-language entry can never be cleaned up.
+
+## Maintaining the rule files
+You append to `docs/decisions.md` and `docs/pitfalls.md` yourself, every phase.
+NEVER edit `CLAUDE.md` or `docs/workflow.md` on your own initiative — propose the exact
+replacement text and wait for the user to approve. If a rule here is wrong or outdated,
+say so; never silently work around it. Details in `docs/workflow.md`.
