@@ -161,6 +161,45 @@ test('creating a tool with invalid data returns a validation error', function ()
     ])->assertStatus(422);
 });
 
+test('creating a tool with a description over 5000 characters is rejected', function () {
+    Sanctum::actingAs(User::factory()->create());
+
+    $response = $this->postJson('/api/tools', [
+        'name' => 'New Tool',
+        'description' => str_repeat('a', 5001),
+        'url' => 'https://example.com',
+    ]);
+
+    $response->assertStatus(422);
+    expect($response->json('errors'))->toHaveKey('description');
+});
+
+test('creating a tool with a description of exactly 5000 characters is accepted', function () {
+    Sanctum::actingAs(User::factory()->create());
+
+    $response = $this->postJson('/api/tools', [
+        'name' => 'New Tool',
+        'description' => str_repeat('a', 5000),
+        'url' => 'https://example.com',
+    ]);
+
+    $response->assertStatus(201);
+});
+
+test('updating a tool with a description over 5000 characters is rejected', function () {
+    $author = User::factory()->create();
+    Sanctum::actingAs($author);
+
+    $tool = makeTool(['created_by' => $author->id]);
+
+    $response = $this->putJson("/api/tools/{$tool->id}", [
+        'description' => str_repeat('a', 5001),
+    ]);
+
+    $response->assertStatus(422);
+    expect($response->json('errors'))->toHaveKey('description');
+});
+
 // UPDATE / DELETE authorization (ADR-12)
 
 test('the author can update their own tool', function () {

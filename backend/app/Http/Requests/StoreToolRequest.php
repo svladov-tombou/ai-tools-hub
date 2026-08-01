@@ -24,7 +24,7 @@ class StoreToolRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'description' => ['required', 'string'],
+            'description' => ['required', 'string', 'max:5000'],
             'url' => ['required', 'url'],
             'documentation_url' => ['nullable', 'url'],
             'video_url' => ['nullable', 'url'],

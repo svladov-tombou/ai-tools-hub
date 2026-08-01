@@ -24,7 +24,7 @@ class UpdateToolRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'string', 'max:255'],
-            'description' => ['sometimes', 'string'],
+            'description' => ['sometimes', 'string', 'max:5000'],
             'url' => ['sometimes', 'url'],
             'documentation_url' => ['nullable', 'url'],
             'video_url' => ['nullable', 'url'],

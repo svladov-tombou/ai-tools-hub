@@ -269,3 +269,38 @@ Append-only. Never edit a past ADR — when a decision changes, add a new ADR an
 **Consequences:** `/tools` now filters by department, and cards show which departments and roles each tool targets — roles were displayed for the first time here, having previously been invisible in the UI. **The phase's real lesson came from a bug the tooling could not catch:** the dropdown wrote `?department=` to the URL and `getTools` accepted a `department` argument, but `tools-list.tsx` — the component that actually reads the URL and calls the API — was never taught to read the param. Both ends of the chain existed and the middle was missing. `tsc` and `lint` both passed, because `department?: string` is optional and omitting it is perfectly valid TypeScript. It surfaced only in the browser, and only because the developer noticed that a tool without the IT department was still showing under an IT filter. Four edits fixed it (read the param, pass it, add it to the `useEffect` dependency array, include it in `hasActiveFilters`) — and the dependency array matters as much as the rest: without it the URL would change and the list would not refetch, which is more confusing than no filter at all. Verified in the browser: `role=manager` + `department=it` returned 4 tools before the fix and 3 after (the discriminating check — a combination where wrong and right answers differ), plus department-alone filtering, an intentionally empty result showing the *filtered* empty message rather than the *no tools at all* message, a pasted URL pre-selecting the dropdown, and the English locale rendering translated labels and department names. `npx tsc --noEmit`, `npm run lint`, and `npm run build` all clean.
 
 **Alternatives considered:** Showing `department.name` straight from the backend — rejected by the developer in favor of dictionary translation, accepting the extra maintenance for a properly bilingual UI. Casting the translation key to bypass the type error — rejected as hiding a real check. Character-based description truncation (`slice(0, 200)`) — rejected in favor of CSS `line-clamp`, which reasons in rendered lines instead of a character count that means different things at different widths. Keeping the badge style and merely recoloring departments to distinguish them — rejected once labelled rows proved both clearer and more compact. Seeding a single throwaway tool with departments via curl just to see the UI — rejected in favor of extending `ToolSeeder`, so every future phase (the modal especially) is developed against data that actually exercises departments.
+
+---
+
+## ADR-22: Maximum length for tool description (max:5000)
+
+**Status:** Accepted
+
+**Context:** The `description` field was validated only as `required|string` (Store) and
+`sometimes|string` (Update), with no upper bound. The database column is TEXT, which holds
+65,535 BYTES. Cyrillic in UTF-8 takes 2 bytes per character, so the real capacity is roughly
+32,000 characters, not 65,000. Without a cap, accidentally pasting an entire document into
+the field is accepted silently. This debt was recorded during the departments phase and is
+being closed now, before the add/edit tool modal, because the frontend needs to mirror the
+same limit in `maxLength`.
+
+**Decision:** `max:5000` characters, in StoreToolRequest AND in UpdateToolRequest.
+The number is generous (~10,000 bytes of Cyrillic, six times below the column ceiling), so it
+never blocks a legitimately long description, but it stops an absurd payload. The card already
+truncates the description visually (line-clamp-3), so this limit is not style policing.
+
+**Consequences:** Three new tests in tests/Feature/ToolApiTest.php, written as a boundary pair:
+5000 characters → 201, 5001 characters → 422 with `description` present in errors; plus the
+same check for UPDATE. The boundary pair is deliberate — a test using 10,000 characters would
+pass even if the rule were `max:9999` and would prove nothing about the specific number. The
+UPDATE test is equally deliberate: the rule lives in two files, and testing only CREATE would
+leave a silent path for someone to remove the rule from UpdateToolRequest without any test
+turning red. The frontend modal must use the same number for `maxLength`.
+
+**Alternatives considered:**
+- `max:1000` — tighter, but a real risk of hitting a legitimate description.
+- `max:2000` — a middle ground with no clear advantage over 5000.
+- No limit (the status quo) — rejected: the database accepts input until it blows up around
+  32,000 characters with an opaque MySQL error instead of a clean 422 response.
+- Frontend-only validation — rejected: trivially bypassed; security belongs on the backend.
+
