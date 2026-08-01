@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Models\Category;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 
 class CategorySeeder extends Seeder
 {
@@ -14,17 +13,15 @@ class CategorySeeder extends Seeder
      */
     public function run(): void
     {
-        $names = [
-            'Code Assistants',
-            'Image Generation',
-            'Writing',
-            'Data & Analytics',
-            'Productivity',
+        $categories = [
+            'code-assistants' => 'Асистенти за код',
+            'image-generation' => 'Генериране на изображения',
+            'writing' => 'Писане и текстове',
+            'data-analytics' => 'Данни и анализи',
+            'productivity' => 'Продуктивност',
         ];
 
-        foreach ($names as $name) {
-            $slug = Str::slug($name);
-
+        foreach ($categories as $slug => $name) {
             Category::updateOrCreate(['slug' => $slug], ['name' => $name, 'slug' => $slug]);
         }
     }

@@ -60,6 +60,17 @@ A test caught that it was silently null, which made the whole ADR-12 rule dead c
 
 **Laravel 13's base `Controller` does NOT include `AuthorizesRequests`** — it was added manually.
 
+**A seeder keyed on a DERIVED value is keyed on the value it derives from.** `CategorySeeder`
+used `updateOrCreate(['slug' => $slug], ...)` — idempotent-looking — but the slug came from
+`Str::slug($name)`. Renaming the categories would have changed every key: five NEW rows, five
+orphans still holding all 18 `category_tool` pivot rows, and `ToolSeeder` (which attaches by
+hardcoded English slug) silently attaching nothing. Fixed by an explicit `slug => name` map,
+like `DepartmentSeeder`. Before changing seed data, ask what the key is derived FROM.
+
+**Prove a rename in place; do not assume it.** Snapshot ids, slugs and pivot counts BEFORE and
+AFTER the seed and compare. "The names look right in the UI" is also true when five new rows
+were created and the old ones are sitting there orphaned.
+
 **`sail artisan` includes destructive commands.** `migrate:fresh` WIPES the database and kills
 every token (`personal_access_tokens` is recreated) → everyone must log in again. `db:seed`
 only adds. Tests use a SEPARATE database (`phpunit.xml`), which is why `RefreshDatabase` is safe.
@@ -99,6 +110,18 @@ so "fix the previous edit" prompts refer to something that no longer exists.
 **8. A 4xx in the console is not always a failure.** A 422 while testing validation is success.
 
 **9. `npm run build` requires the dev server STOPPED** — both want `.next`.
+
+**10. NEVER `git stash` uncommitted work in this project.** To compare the working tree against
+HEAD, extract instead: `git show HEAD:<path> > /tmp/old.php`. Note that Pint runs INSIDE the
+container, which only sees `backend/` mounted at `/var/www/html` — host `/tmp` is invisible to
+it. Get the file in with `docker compose cp /tmp/old.php laravel.test:/tmp/old.php`, then
+`sail exec laravel.test ./vendor/bin/pint --test /tmp/old.php`.
+
+**11. Before "fixing" a linter/formatter complaint, check whether it is YOURS.** Pint flagged
+`no_unused_imports` on the edited seeder. Running it against the HEAD version of the same file
+and against the two untouched sibling seeders showed all three fail identically — pre-existing
+scaffold debt, not something the change introduced. Fixing it would have been unrelated
+cleanup across three files.
 
 ## Useful commands
 

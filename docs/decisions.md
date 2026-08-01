@@ -464,3 +464,79 @@ its own phase and its own ADR, rather than arriving as a side effect of a docume
   contradicts CLAUDE.md, pitfalls, or an ADR must be reported rather than worked around.
 - Local agent and permission configuration lives outside the repository and is intentionally
   not described here.
+
+---
+
+## ADR-26: Category names in Bulgarian; English slugs frozen as the identifier
+
+**Status:** Accepted
+
+**Context:** The five categories were seeded in English (Code Assistants, Image Generation,
+Writing, Data & Analytics, Productivity). ADR-23 already established that category names are
+**single-language by design** — unlike departments and roles, they are free user data that
+will become editable through a Settings screen, so a typed i18n dictionary cannot cover them.
+That ADR recorded the names as "currently seeded in English". This phase fills in the
+intended value: Bulgarian. The decision recorded in ADR-23 is unchanged; only the data is.
+
+Reconnaissance of the real `CategorySeeder` corrected the premise the task started from.
+The seeder does not use `firstOrCreate` keyed on name — it uses
+`updateOrCreate(['slug' => $slug], ...)`, keyed on slug, which looks safe. But the slug was
+**derived from the name** with `Str::slug($name)`. A seeder keyed on a derived value is
+effectively keyed on the value it derives from: changing the names would have changed every
+key, producing five NEW rows and leaving the original five orphaned, still holding all 18
+`category_tool` pivot rows. The failure would then have propagated silently, because
+`ToolSeeder` attaches categories by **hardcoded English slug** via
+`Category::whereIn('slug', ...)` — with new slugs that returns an empty collection and tools
+get no categories and no error, the exact shape of the seeder-ordering trap already recorded
+in `docs/pitfalls.md`.
+
+**Decision:** (1) `CategorySeeder` iterates an explicit `slug => name` map instead of deriving
+slugs, mirroring `DepartmentSeeder` exactly — the pattern ADR-20 established for the same
+reason (`Str::slug` cannot produce the required English slugs from Cyrillic names).
+(2) The five English slugs are **frozen unchanged**: `code-assistants`, `image-generation`,
+`writing`, `data-analytics`, `productivity`. The slug is the wire vocabulary — ADR-18's "two
+alphabets" rule — spoken by `ToolSeeder`, by `Tool::scopeFilter`'s `?category=` parameter, and
+by the frontend filter's option values. It is never shown to a user, so translating it buys
+nothing and breaks three things. (3) Names become Bulgarian: Асистенти за код, Генериране на
+изображения, Писане и текстове, Данни и анализи, Продуктивност. (4) `updateOrCreate` keyed on
+slug is retained deliberately — it is precisely what renames the five existing rows **in
+place**, preserving their ids and pivot rows. Applied with
+`sail artisan db:seed --class=CategorySeeder`; **no `migrate:fresh`**, so no tokens were
+destroyed and nobody had to log in again. (5) Nothing else was touched: no migration, no
+model, no controller, no test, no frontend file.
+
+**Consequences:**
+- Verified by snapshotting the table before and after: the same five ids, the same five slugs,
+  the same per-category tool counts (3/2/4/3/6) and the same 18 `category_tool` rows, with only
+  `name` changed. Zero orphans.
+- Zero frontend changes were needed, which is itself the confirmation that ADR-19/ADR-21 got
+  the contract right: `tools-filters.tsx` reads `category.slug` for the value and
+  `category.name` for the label, both straight from `/api/categories`, and no category slug is
+  hardcoded anywhere in `frontend/`.
+- Zero test changes were needed. No test seeds; `ReferenceDataTest` and `ToolApiTest` create
+  their own `Category` rows. Full suite green at 28 tests / 67 assertions.
+- **The English UI now shows Bulgarian category names.** This is the accepted consequence of
+  ADR-23, confirmed in the browser: on `/en` the chrome, roles and departments render in
+  English (dictionary-translated on fixed slugs) while categories stay Cyrillic (free data).
+  The only alternative would be a `name_en` column — a schema change and a separate decision.
+- `CategoryController` orders by `name`, so the dropdown order changed to Bulgarian
+  alphabetical (Асистенти, Генериране, Данни, Писане, Продуктивност). MySQL's collation sorts
+  Cyrillic correctly, as ADR-20 already found for departments.
+- **Open question, deliberately deferred to the Settings phase:** once categories are editable
+  in the UI, `updateOrCreate` will overwrite a user-renamed category back to the seeded name on
+  the next `db:seed`. The right answer then is `firstOrCreate` (create if missing, never
+  overwrite). Not changed now — `updateOrCreate` is the mechanism this rename depends on.
+- Pre-existing debt confirmed, not introduced: `pint --test` reports `no_unused_imports` for
+  `CategorySeeder`, but it reports the same for the HEAD version of that file and for the
+  untouched `DepartmentSeeder` and `ToolSeeder`. The unused `WithoutModelEvents` scaffold
+  import has been in all three since they were written. Left alone as unrelated cleanup.
+
+**Alternatives considered:**
+- Bulgarian names AND Cyrillic-derived slugs — rejected. It requires either `migrate:fresh`
+  (wipes every token) or a data migration, breaks `ToolSeeder`'s hardcoded slugs, invalidates
+  existing filter URLs, and gains nothing, since slugs are invisible to users.
+- A one-off data migration to rename the rows — rejected as unnecessary: `updateOrCreate` keyed
+  on an unchanged slug already renames in place, and a migration would add a permanent file to
+  express a one-time dev-data edit.
+- Translating category names through the i18n dictionary like departments — impossible by
+  construction (ADR-23): a typed dictionary cannot cover rows a user will create at runtime.
