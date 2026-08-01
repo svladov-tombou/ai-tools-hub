@@ -366,3 +366,50 @@ Success is signalled via a `sessionStorage` flag read once by the list.
   rejected. The rule was correct: the flag is read once and never changes, so a lazy
   `useState` initializer removes the extra render instead of hiding it.
 
+---
+
+## ADR-24: Tool editing at /tools/[id]/edit
+
+**Status:** Accepted
+
+**Context:** With creation in place (ADR-23), tools needed an edit path. The form component
+was deliberately built mode-agnostic in the previous phase specifically so that this phase
+would not have to touch it.
+
+**Decision:** A dynamic route `/tools/[id]/edit` with a thin client wrapper
+(`edit-tool-form.tsx`) that loads the tool, converts it to a `ToolPayload` and supplies
+`updateTool` as the submit handler. `ToolForm` itself was NOT modified in this phase —
+the mode-agnostic split paid off exactly as predicted.
+
+An edit link appears on the tool card for the author, or for owner/pm, mirroring
+ToolPolicy. This is UX only: the real guarantee is the backend policy, which is already
+covered by tests. Hiding the button is courtesy, not security.
+
+**Consequences:**
+- `toPayload()` maps relations to id arrays (`categories` → `category_ids`, etc). This is
+  the read/write asymmetry: reads return objects, writes want ids. Getting it wrong would
+  not error — the form would open with empty checkboxes and a save would silently wipe
+  every relation via `sync()`. Verified in the browser by REMOVING a role and confirming
+  the removal persisted; a form that only sent additions would have looked identical on a
+  pure add test.
+- `ToolForm` must not render before the tool has loaded: it reads `initialValues` once, in
+  a `useState` initializer, so an early render would leave it permanently blank.
+- The page is a server component and cannot fetch the tool, because the auth token lives in
+  localStorage (ADR-6). The heading therefore moved INTO the client component, which costs
+  a brief flash of "Loading…" before the tool name appears. Accepted as the only way to
+  show the name at all.
+- The success banner key changed from `tool_created` ("1") to `tool_saved`
+  ("created" | "updated"), keeping ONE mechanism instead of two parallel flags. The banner
+  text uses an explicit ternary, NOT a template key `t(\`tools.form.${value}\`)`, which
+  would not compile against next-intl's typed `t()` (the TS2345 trap from ADR-21).
+- Deletion is deliberately NOT part of this phase: it is irreversible and deserves its own
+  decisions (soft delete, pivot cleanup, confirmation).
+
+**Alternatives considered:**
+- Passing the already-loaded `Tool` from the card into the page — rejected; the edit URL
+  must work on its own (refresh, shared link).
+- A `mode: "create" | "edit"` prop on the form — rejected in ADR-23, and this phase
+  confirmed the choice: zero changes to the form were needed.
+- Sending only changed fields on update — rejected. `UpdateToolRequest` uses `sometimes`,
+  so an omitted field is left untouched; sending the full payload makes behaviour
+  predictable and is why `ToolPayload` has no optional fields.

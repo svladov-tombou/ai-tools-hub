@@ -204,3 +204,31 @@ export async function createTool(payload: ToolPayload): Promise<Tool> {
 
   return response.json();
 }
+
+export async function getTool(id: number): Promise<Tool> {
+  const response = await request(`/tools/${id}`);
+
+  if (!response.ok) {
+    throw new Error("Unable to load the tool. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function updateTool(id: number, payload: ToolPayload): Promise<Tool> {
+  const response = await request(`/tools/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to save the tool. Please try again.");
+  }
+
+  return response.json();
+}

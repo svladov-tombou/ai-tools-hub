@@ -21,13 +21,13 @@ export function ToolsList() {
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [showCreated] = useState(
-    () => typeof window !== "undefined" && sessionStorage.getItem("tool_created") === "1",
+  const [savedState] = useState<string | null>(() =>
+    typeof window !== "undefined" ? sessionStorage.getItem("tool_saved") : null,
   );
 
   useEffect(() => {
-    if (showCreated) sessionStorage.removeItem("tool_created");
-  }, [showCreated]);
+    if (savedState) sessionStorage.removeItem("tool_saved");
+  }, [savedState]);
 
   useEffect(() => {
     let isMounted = true;
@@ -92,9 +92,9 @@ export function ToolsList() {
 
   return (
     <div className="flex flex-col gap-6">
-      {showCreated ? (
+      {savedState ? (
         <p className="rounded-md border border-accent px-3 py-2 text-sm text-text-primary">
-          {t("tools.form.created")}
+          {savedState === "updated" ? t("tools.form.updated") : t("tools.form.created")}
         </p>
       ) : null}
       <div className="flex justify-end">

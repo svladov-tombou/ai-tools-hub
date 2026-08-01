@@ -10,7 +10,7 @@ export function NewToolForm() {
 
   async function handleSubmit(payload: ToolPayload) {
     const tool = await createTool(payload);
-    sessionStorage.setItem("tool_created", "1");
+    sessionStorage.setItem("tool_saved", "created");
     router.push("/tools");
     return tool;
   }

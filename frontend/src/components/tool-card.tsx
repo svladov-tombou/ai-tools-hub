@@ -1,20 +1,39 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
+import { useAuth } from "@/lib/auth-context";
 import type { Tool } from "@/types";
 
 export function ToolCard({ tool }: { tool: Tool }) {
   const t = useTranslations("common");
+  const { user } = useAuth();
+  const canEdit = Boolean(
+    user &&
+      (tool.created_by === user.id ||
+        user.roles.includes("owner") ||
+        user.roles.includes("pm")),
+  );
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-6">
       <div className="flex items-start justify-between gap-2">
         <h2 className="text-lg font-medium text-text-primary">{tool.name}</h2>
-        {tool.status === "draft" && (
-          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-            {t("tools.draftBadge")}
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {tool.status === "draft" && (
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+              {t("tools.draftBadge")}
+            </span>
+          )}
+          {canEdit && (
+            <Link
+              href={`/tools/${tool.id}/edit`}
+              className="rounded-md border border-border px-2 py-0.5 text-xs text-text-primary hover:underline"
+            >
+              {t("tools.editButton")}
+            </Link>
+          )}
+        </div>
       </div>
 
       <p className="text-sm text-text-secondary line-clamp-3">{tool.description}</p>
