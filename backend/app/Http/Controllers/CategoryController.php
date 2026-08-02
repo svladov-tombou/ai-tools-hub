@@ -14,7 +14,16 @@ class CategoryController extends Controller
         // Ordered by slug, not name: `name` is a JSON translation map (ADR-27), so the
         // database cannot sort it by the language the user is reading. The slug gives a
         // stable, deterministic order; the frontend sorts by the displayed name.
-        return Category::orderBy('slug')->get(['id', 'name', 'slug']);
+        //
+        // `tools_count` lets the Settings screen show how many tools use a category and
+        // disable its delete button, instead of offering an action that always fails.
+        // The columns must be selected BEFORE withCount: passing them to get() instead
+        // would be ignored once withCount has set the query's select list, and the
+        // response would silently widen to every column including timestamps.
+        return Category::select(['id', 'name', 'slug'])
+            ->withCount('tools')
+            ->orderBy('slug')
+            ->get();
     }
 
     /**

@@ -849,3 +849,54 @@ Neither section is a link yet, because neither screen exists. (6) `tool-card.tsx
 - A dedicated 403 page for a signed-in user without the role — rejected by the developer; redirecting
   matches what `RequireAuth` already does, and one behaviour is easier to reason about than two.
 - Making the two sections links now — rejected: they would be 404s until their phases land.
+
+---
+
+## ADR-30: `tools_count` on GET /api/categories, so the Settings screen can disable an impossible delete
+
+**Status:** Accepted
+
+**Context:** ADR-28 blocks deleting a category that tools still use, answering 422 with an English
+sentence carrying the count. ADR-29 recorded the consequence as an open question for the categories
+UI phase: a Bulgarian interface cannot translate that sentence, and — worse — the admin only learns
+the category is in use *after* pressing a button that was never going to work. The alternative was to
+leave the API alone and display Laravel's English message, the same debt ADR-23 accepted for form
+validation errors. The developer chose to change the API instead: the list should show usage and the
+delete button should be disabled for a category in use.
+
+**Decision:** `CategoryController@index` returns a fourth field, `tools_count`, via
+`Category::select(['id', 'name', 'slug'])->withCount('tools')->orderBy('slug')->get()`. The explicit
+`select()` comes **before** `withCount()` on purpose: `withCount` sets the query's select list, after
+which the column array passed to `get()` is silently ignored and the response widens to every column,
+timestamps included. The ordering is not stylistic — reversing the two calls drops the subquery
+entirely and `tools_count` disappears from the response.
+
+**Consequences:**
+- The response shape of an existing endpoint changed, so both consumers change with it: the frontend
+  `Category` type and the Settings screen (ADR-31). The tools filter and the tool form also read this
+  endpoint and simply receive one extra field they ignore.
+- **`ReferenceDataTest`'s exact-key assertion caught the widening immediately** — it went red the
+  moment `tools_count` appeared, which is precisely why ADR-18 asserted the exact key set rather than
+  a subset. It was updated deliberately, not loosened.
+- A new test asserts a **used category reports 2 and an empty one reports 0** — two counts that differ
+  from each other and from the number of categories, so neither a hardcoded zero nor a miscounted
+  join passes.
+- Both changes were proven to go red on purpose: removing `withCount` fails both category tests, and
+  **swapping `select()` and `withCount()` fails them too** — confirming the ordering comment describes
+  real behaviour rather than folklore.
+- Verified against the live API: the five categories report 3/2/4/3/6, matching the per-category tool
+  counts snapshotted in ADR-26 and ADR-27, and summing to exactly the 18 `category_tool` rows.
+- Full suite: **60 tests / 153 assertions** green. Pint clean on both touched files.
+- The 422 from `destroy` is unchanged and still English. It is now a fallback rather than the primary
+  path: the UI should prevent the attempt, and the 422 remains the guarantee for anyone calling the
+  API directly or racing a concurrent edit.
+
+**Alternatives considered:**
+- Leaving the API unchanged and rendering Laravel's English 422 — rejected by the developer; it tells
+  the admin only after the failed attempt and cannot be localised.
+- Returning the count as a separate field inside the 422 body instead — rejected: it still only
+  answers after the click, and it invents a non-standard error shape for one case.
+- A dedicated admin endpoint carrying usage data — rejected as premature for one extra integer;
+  the existing consumers are unharmed by a field they ignore.
+- `withCount` without the explicit `select()` — rejected: it returns whole models and breaks the
+  enumerated-columns contract from ADR-18.

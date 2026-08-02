@@ -3,6 +3,7 @@
 use App\Models\Category;
 use App\Models\Department;
 use App\Models\Role;
+use App\Models\Tool;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -27,8 +28,34 @@ test('an authenticated user can list categories', function () {
     expect($response->json())->toHaveCount(2);
 
     foreach ($response->json() as $category) {
-        expect(array_keys($category))->toBe(['id', 'name', 'slug']);
+        expect(array_keys($category))->toBe(['id', 'name', 'slug', 'tools_count']);
     }
+});
+
+test('each category reports how many tools use it', function () {
+    Sanctum::actingAs(User::factory()->create());
+
+    $used = Category::create(['name' => ['bg' => 'Заета'], 'slug' => 'busy']);
+    Category::create(['name' => ['bg' => 'Празна'], 'slug' => 'empty']);
+
+    foreach (['First', 'Second'] as $name) {
+        $tool = Tool::create([
+            'name' => $name,
+            'description' => 'Uses the busy category',
+            'url' => 'https://example.com',
+            'status' => 'published',
+        ]);
+        $tool->categories()->attach($used);
+    }
+
+    // Two counts that differ, and differ from the number of categories, so neither a
+    // hardcoded 0 nor a miscounted join passes. The Settings screen disables the delete
+    // button on this number, so a wrong count offers an action that cannot succeed.
+    $counts = collect($this->getJson('/api/categories')->assertOk()->json())
+        ->pluck('tools_count', 'slug');
+
+    expect($counts['busy'])->toBe(2);
+    expect($counts['empty'])->toBe(0);
 });
 
 test('a category name is returned as a translation map for every language', function () {
