@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { useRouter, usePathname } from "@/i18n/navigation";
 import { getCategories, getRoles, getDepartments } from "@/lib/api";
+import { localizedName, sortByLocalizedName } from "@/lib/localized-name";
 import type { Category, Department, RoleOption } from "@/types";
 
 function withParam(
@@ -25,6 +26,7 @@ function withParam(
 
 export function ToolsFilters() {
   const t = useTranslations("common");
+  const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -97,9 +99,9 @@ export function ToolsFilters() {
         className="rounded-md border border-border bg-card px-3 py-2 text-sm text-text-primary"
       >
         <option value="">{t("tools.filters.allCategories")}</option>
-        {categories.map((category) => (
+        {sortByLocalizedName(categories, locale).map((category) => (
           <option key={category.id} value={category.slug}>
-            {category.name}
+            {localizedName(category.name, locale)}
           </option>
         ))}
       </select>

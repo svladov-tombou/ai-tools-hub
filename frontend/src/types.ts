@@ -1,6 +1,13 @@
 export type Role = "owner" | "pm" | "manager" | "employee";
 
-export type Category = { id: number; name: string; slug: string };
+/**
+ * A name translated in the database rather than in a dictionary (ADR-27).
+ * `bg` is required because it is the fallback; other languages may be missing.
+ * `fr` is data only — French is not a selectable UI language yet.
+ */
+export type LocalizedName = { bg: string; en?: string; fr?: string };
+
+export type Category = { id: number; name: LocalizedName; slug: string };
 
 export type DepartmentSlug =
   | "marketing"

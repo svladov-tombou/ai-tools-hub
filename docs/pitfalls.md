@@ -75,6 +75,38 @@ were created and the old ones are sitting there orphaned.
 every token (`personal_access_tokens` is recreated) → everyone must log in again. `db:seed`
 only adds. Tests use a SEPARATE database (`phpunit.xml`), which is why `RefreshDatabase` is safe.
 
+**Tests run on MySQL, not SQLite.** `phpunit.xml` overrides `DB_DATABASE` (`testing`) but NOT
+`DB_CONNECTION`. So MySQL-specific raw SQL in a migration is safe — and, conversely, nothing
+protects you from writing SQL that only MySQL understands.
+
+## JSON columns (`categories.name`, ADR-27)
+
+**`orderBy()` on a JSON column does not sort — and does not complain.** `orderBy('name')` on the
+JSON `name` returned rows in INSERTION order. No error, no warning; the list is simply wrong in a
+way that looks like "the seeder ran in that order". Sort by an extracted path
+(`name->>'$.bg'`) or by another column. Proven by making the test go red on purpose.
+
+**MySQL cannot put a UNIQUE index on a JSON column.** Converting a unique string column to JSON
+means dropping that index first (`ALTER TABLE ... DROP INDEX categories_name_unique`). A
+generated column + unique index is the workaround; it was judged not worth it here.
+
+**Converting VARCHAR → JSON in place: widen to TEXT first.** `JSON_OBJECT('bg', name)` adds ~10
+characters, so wrapping a value near the `VARCHAR(255)` ceiling truncates it silently and the
+following `MODIFY ... JSON` then fails on unparseable text. Order:
+drop index → `MODIFY name TEXT` → `UPDATE ... JSON_OBJECT` → `MODIFY name JSON NOT NULL`.
+It cannot be done in one `Schema::table()` call — the contents must be rewritten between the two
+type changes. In `down()`, extract through a TEMPORARY column: assigning
+`JSON_UNQUOTE(JSON_EXTRACT(...))` back into the JSON column stores a quoted JSON string scalar,
+so the reverted VARCHAR would contain the quotes.
+
+**Use a nowdoc (`<<<'SQL'`) for SQL containing a JSON path.** `'$.bg'` inside a double-quoted PHP
+string is asking for trouble, and single quotes cannot nest with MySQL's.
+
+**Forgetting the model's array cast fails far from the cause.** `Category::create(['name' => [...]])`
+without `'name' => 'array'` in `casts()` throws
+`Grammar::parameterize(): Argument #1 ($values) must be of type array, string given` from deep
+inside the query builder. The message names the grammar, not the missing cast.
+
 ## Process gotchas
 
 **1. The chain with a missing middle — the most expensive bug so far.** Both ends exist, the

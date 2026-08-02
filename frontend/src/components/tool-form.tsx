@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { getCategories, getRoles, getDepartments, ValidationError } from "@/lib/api";
 import type { ToolPayload } from "@/lib/api";
+import { localizedName, sortByLocalizedName } from "@/lib/localized-name";
 import { CheckboxGroup } from "@/components/checkbox-group";
 import type { Category, Department, RoleOption, Difficulty, ToolStatus } from "@/types";
 
@@ -31,6 +32,7 @@ const STATUSES: ToolStatus[] = ["draft", "published"];
 
 export function ToolForm({ initialValues, onSubmit }: ToolFormProps) {
   const t = useTranslations("common");
+  const locale = useLocale();
   const router = useRouter();
 
   const [values, setValues] = useState<ToolPayload>(initialValues ?? EMPTY);
@@ -231,7 +233,10 @@ export function ToolForm({ initialValues, onSubmit }: ToolFormProps) {
       <CheckboxGroup
         heading={t("tools.form.categoriesHeading")}
         columns={3}
-        options={categories.map((c) => ({ id: c.id, label: c.name }))}
+        options={sortByLocalizedName(categories, locale).map((c) => ({
+          id: c.id,
+          label: localizedName(c.name, locale),
+        }))}
         selectedIds={values.category_ids}
         onChange={(ids) => setField("category_ids", ids)}
         disabled={isLoadingOptions}

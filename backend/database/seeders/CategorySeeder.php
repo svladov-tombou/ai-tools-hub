@@ -13,12 +13,34 @@ class CategorySeeder extends Seeder
      */
     public function run(): void
     {
+        // Keyed on the English slug, which is frozen (ADR-26): it is the wire vocabulary
+        // spoken by ToolSeeder, by ?category= and by the frontend filter option values.
         $categories = [
-            'code-assistants' => 'Асистенти за код',
-            'image-generation' => 'Генериране на изображения',
-            'writing' => 'Писане и текстове',
-            'data-analytics' => 'Данни и анализи',
-            'productivity' => 'Продуктивност',
+            'code-assistants' => [
+                'bg' => 'Асистенти за код',
+                'en' => 'Code Assistants',
+                'fr' => 'Assistants de code',
+            ],
+            'image-generation' => [
+                'bg' => 'Генериране на изображения',
+                'en' => 'Image Generation',
+                'fr' => "Génération d'images",
+            ],
+            'writing' => [
+                'bg' => 'Писане и текстове',
+                'en' => 'Writing',
+                'fr' => 'Rédaction',
+            ],
+            'data-analytics' => [
+                'bg' => 'Данни и анализи',
+                'en' => 'Data & Analytics',
+                'fr' => 'Données et analyses',
+            ],
+            'productivity' => [
+                'bg' => 'Продуктивност',
+                'en' => 'Productivity',
+                'fr' => 'Productivité',
+            ],
         ];
 
         foreach ($categories as $slug => $name) {

@@ -308,7 +308,9 @@ turning red. The frontend modal must use the same number for `maxLength`.
 
 ## ADR-23: Add-tool form on a dedicated page, not in a modal
 
-**Status:** Accepted
+**Status:** Accepted — except the "category names are single-language by design" consequence,
+which is **superseded by ADR-27** (names are now a JSON translation map in the database).
+Every other decision in this ADR stands.
 
 **Context:** Creating a tool needs ten inputs, including a 5000-character description and
 three multi-selects (5 categories, 4 roles, 12 departments). The original plan was a modal.
@@ -469,7 +471,9 @@ its own phase and its own ADR, rather than arriving as a side effect of a docume
 
 ## ADR-26: Category names in Bulgarian; English slugs frozen as the identifier
 
-**Status:** Accepted
+**Status:** Accepted — **extended by ADR-27**: `name` is now a JSON translation map, so the
+"English UI shows Bulgarian category names" consequence below no longer holds. The frozen slugs,
+the explicit `slug => name` map and the `updateOrCreate` rename-in-place mechanism are unchanged.
 
 **Context:** The five categories were seeded in English (Code Assistants, Image Generation,
 Writing, Data & Analytics, Productivity). ADR-23 already established that category names are
@@ -540,3 +544,131 @@ model, no controller, no test, no frontend file.
   express a one-time dev-data edit.
 - Translating category names through the i18n dictionary like departments — impossible by
   construction (ADR-23): a typed dictionary cannot cover rows a user will create at runtime.
+
+---
+
+## ADR-27: Category names as a JSON translation map in the database; the frontend picks the language
+
+**Status:** Accepted
+
+**Context:** ADR-23 recorded that category names are **single-language by design** — unlike
+departments and roles, which are translated through the typed i18n dictionary on a fixed slug,
+categories are free user data that a later Settings phase will make editable, so a compile-time
+dictionary cannot cover rows a user creates at runtime. ADR-26 then filled in the single
+language (Bulgarian) and noted the accepted consequence out loud: **the English UI shows
+Bulgarian category names**, with "the only alternative would be a `name_en` column — a schema
+change and a separate decision". This phase is that decision. Translations live in the
+database, not in language files, precisely because the categories will become editable through
+the UI; a dictionary key cannot be created by a user at runtime.
+
+Reconnaissance corrected the task's own premise. The task specified selecting the value with
+`app()->getLocale()`, but `app()->getLocale()` in this project **always returns `en`**:
+`backend/.env` sets `APP_LOCALE=en`, `bootstrap/app.php` has an empty `withMiddleware()`, and
+`api.ts`'s `request()` sends only `Accept`, `Content-Type` and `Authorization`. The frontend's
+locale lives in the URL (ADR-13, `localeDetection: false`) and never reaches Laravel. A literal
+implementation would therefore have shown English names in the Bulgarian UI — both ends of the
+chain present, the middle missing, exactly the failure shape recorded as process gotcha #1 in
+`docs/pitfalls.md`. This was reported before any code was written and the developer chose where
+the choice should happen.
+
+**Decision:** (1) `categories.name` becomes a **JSON** column holding a translation map,
+`{"bg": "...", "en": "...", "fr": "..."}`, cast with plain Laravel `'name' => 'array'` in
+`protected function casts()` (the style `User` already uses). **No `spatie/laravel-translatable`
+and no `category_translations` table** — for five rows a JSON column is enough, and both
+alternatives are an ask-first dependency/schema decision for no gain here.
+(2) **The frontend picks the language, not the backend.** `/api/categories` (and the
+`categories` relation embedded in every tool) returns `name` as the whole map; a new
+`frontend/src/lib/localized-name.ts` exposes `localizedName(name, locale)` which reads the
+locale from next-intl (`useLocale()`, i.e. from the URL) and **falls back to `bg`** for a
+missing translation. This keeps ONE source of truth for "the current language" — the URL. The
+rejected alternative would have had to mirror the frontend locale into Laravel via a header and
+a new middleware, creating a second source that must never drift, plus either an API Resource
+layer (which this project does not have) or an override of the model's serialization to keep
+`name` a string on the wire while it is an array in PHP.
+(3) The **migration converts existing data in place** rather than dropping it: drop the unique
+index, widen `name` to `TEXT`, `UPDATE categories SET name = JSON_OBJECT('bg', name)`, then
+`MODIFY name JSON NOT NULL`. Raw statements are deliberate — MySQL cannot rewrite a column's
+contents and its type in one `Schema::table()` call — and safe, because the project is MySQL
+only (ADR-5) *including tests*: `phpunit.xml` overrides `DB_DATABASE`, never `DB_CONNECTION`.
+The `TEXT` step is not cosmetic: the JSON wrapper adds ~10 characters and would truncate a name
+near the `VARCHAR(255)` ceiling. `down()` reverses it through a temporary column, because
+assigning `JSON_UNQUOTE(...)` back into a JSON column would store a quoted JSON string scalar.
+(4) **The `categories_name_unique` index is dropped**: MySQL cannot place a UNIQUE index on a
+JSON column, and the developer declined a generated column just for this. `slug` remains unique
+and is the real identifier (ADR-26); nothing in the code validated `name` for uniqueness — not a
+Form Request, not a controller.
+(5) **Ordering:** `CategoryController` now orders by **`slug`**. The requested "order by the
+value for the current language" is impossible in SQL under decision (2) — the backend does not
+know the locale — so the backend guarantees a deterministic order and the **frontend** sorts the
+dropdown and the checkbox group by the displayed name with `localeCompare(locale)`
+(`sortByLocalizedName`). This is a deliberate, narrow deviation from ADR-18's "ordering is done
+on the backend so the UI never has to sort": it is the only place the locale exists.
+(6) The five English slugs stay frozen and `updateOrCreate(['slug' => $slug], ...)` is retained,
+so ADR-26's rename-in-place mechanism keeps working; `CategorySeeder` now carries all three
+languages. French is **data only** — adding `fr` to the UI switcher is a separate future task,
+so `routing.locales` is untouched.
+
+**Consequences:**
+- **Existing data survived, proven by snapshot rather than by inspection** (the ADR-26 lesson):
+  the same five ids, the same five slugs, the same per-category tool counts (3/2/4/3/6) and the
+  same 18 `category_tool` rows, before and after both the migration and the seed. Zero orphans.
+  Applied with `migrate` + `db:seed --class=CategorySeeder`; **no `migrate:fresh`**, so no tokens
+  were destroyed.
+- `frontend/src/types.ts` gains `LocalizedName = { bg: string; en?: string; fr?: string }` and
+  `Category.name` is no longer a `string`. `bg` is **required** because it is the fallback; the
+  other languages are optional because a category may genuinely lack a translation. This turned
+  the type into the thing that *found* all three display sites: `tsc` failed at `tool-card.tsx`,
+  `tools-filters.tsx` and `tool-form.tsx` and nowhere else, which is the check ADR-21's
+  "chain with a missing middle" bug did not have.
+- The `fr` values are in the database and reachable, but no UI renders them yet. Activating
+  French is: add `"fr"` to `routing.locales` + a full `messages/fr/common.json`. The category
+  names are already waiting; nothing in this phase needs revisiting.
+- **The locale choice now lives in frontend code, where there is no test framework**
+  (CLAUDE.md: installing one is an ask-first decision, deliberately not taken here). So the
+  Pest tests assert what the backend actually guarantees — that the full map arrives decoded and
+  unmodified — and the fallback was proven **in the browser** instead: a throwaway category with
+  only `bg` rendered its Bulgarian name under `/en` (no blank label, no crash), then was deleted.
+  This asymmetry is the real cost of decision (2) and is recorded here rather than glossed over.
+- Three new Pest tests, each proven to fail without the change rather than assumed to
+  discriminate: the translation map arrives intact (fails without the cast), a partial map is
+  returned as-is with no server-side substitution (fails without the cast), and ordering is by
+  slug — the last one inserted in neither slug nor name order, so it fails both against
+  insertion order and against name-alphabetical order. Reverting the cast and the `orderBy`
+  one at a time made all three go red, which is how it is known they test something.
+- Five existing test fixtures that created a category with a string `name` were updated to
+  arrays. Full suite: **31 tests / 74 assertions green** (28 pre-existing + 3).
+- Verified in a real browser on both locales, which is the only check that can prove per-locale
+  loading: `/bg/tools` shows Асистенти за код / Генериране на изображения / …, `/en/tools` shows
+  Code Assistants / Image Generation / …, each dropdown alphabetical **in its own language**, the
+  `?category=<slug>` filter unchanged (`code-assistants` → Claude, GitHub Copilot, Cursor), and
+  the edit form pre-checking the right boxes with localized labels. Console clean.
+  `npx tsc --noEmit` and `npm run lint` clean.
+- Pint reports `no_unused_imports` on `CategorySeeder`, as it does for the four untouched
+  sibling seeders and for the HEAD version of the same file — pre-existing scaffold debt
+  confirmed, not introduced (the ADR-26 finding, re-confirmed).
+- **The open question from ADR-26 is now larger, not smaller.** Once categories are editable in
+  Settings, `updateOrCreate` will overwrite user-edited names on the next `db:seed` — and it will
+  now overwrite *three languages at once*. `firstOrCreate` remains the answer for that phase.
+- A second question the Settings phase must answer: whether `en`/`fr` are **required** when a
+  user creates a category. Nothing enforces the map's shape today — there is no Form Request for
+  categories, because there is no write endpoint. The frontend fallback means a missing
+  translation degrades quietly rather than breaking, which is the right default for now but is
+  not validation.
+
+**Alternatives considered:**
+- Backend resolves the locale via `Accept-Language` + a middleware, returning `name` as a plain
+  string — rejected by the developer. It keeps the API shape and matches the task's literal
+  wording, but needs a second source of truth for the current language, a new middleware, and
+  either an API Resource layer or a serialization override; and it would leave the future
+  Settings edit form unable to see the other translations it must edit.
+- The same, with a `?locale=` query parameter — rejected: the parameter must be threaded through
+  every call site (`ToolsQuery`, `getCategories`, `getTools`), which is more places to forget
+  than one header.
+- `spatie/laravel-translatable` — rejected by the developer (and an ask-first dependency).
+- A `category_translations` table — rejected: correct at scale, pure overhead for five rows.
+- A `name_en` column (ADR-26's suggestion) — rejected implicitly by choosing JSON: it does not
+  generalise, and a third language would mean a third migration.
+- A generated column with a UNIQUE index over `name->>'$.bg'` — rejected by the developer:
+  complexity in the migration to restore a constraint that no code ever relied on.
+- Sorting on the backend by `name->>'$.bg'` — rejected: it is deterministic but pins the order to
+  Bulgarian in every language, and the frontend can order correctly for free.

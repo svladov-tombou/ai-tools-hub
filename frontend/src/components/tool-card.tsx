@@ -1,12 +1,14 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { localizedName } from "@/lib/localized-name";
 import type { Tool } from "@/types";
 
 export function ToolCard({ tool }: { tool: Tool }) {
   const t = useTranslations("common");
+  const locale = useLocale();
   const { user } = useAuth();
   const canEdit = Boolean(
     user &&
@@ -45,7 +47,9 @@ export function ToolCard({ tool }: { tool: Tool }) {
               {t("tools.categoriesLabel")}:
             </span>
             <p className="text-text-secondary">
-              {tool.categories.map((category) => category.name).join(", ")}
+              {tool.categories
+                .map((category) => localizedName(category.name, locale))
+                .join(", ")}
             </p>
           </div>
         )}

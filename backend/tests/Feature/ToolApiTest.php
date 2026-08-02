@@ -76,7 +76,7 @@ test('search filters tools by name or description', function () {
 test('category filter returns only tools in that category', function () {
     Sanctum::actingAs(User::factory()->create());
 
-    $category = Category::create(['name' => 'Writing', 'slug' => 'writing']);
+    $category = Category::create(['name' => ['bg' => 'Писане', 'en' => 'Writing'], 'slug' => 'writing']);
 
     $matching = makeTool(['name' => 'In Category']);
     $matching->categories()->attach($category);
@@ -111,7 +111,7 @@ test('department and category filters combine as AND, not OR', function () {
     Sanctum::actingAs(User::factory()->create());
 
     $marketing = Department::create(['name' => 'Marketing', 'slug' => 'marketing']);
-    $writing = Category::create(['name' => 'Writing', 'slug' => 'writing']);
+    $writing = Category::create(['name' => ['bg' => 'Писане', 'en' => 'Writing'], 'slug' => 'writing']);
 
     // Tool A matches BOTH filters
     $both = makeTool(['name' => 'Both']);
@@ -135,7 +135,7 @@ test('an authenticated user can create a tool with categories and roles attached
     $user = User::factory()->create();
     Sanctum::actingAs($user);
 
-    $category = Category::create(['name' => 'Productivity', 'slug' => 'productivity']);
+    $category = Category::create(['name' => ['bg' => 'Продуктивност', 'en' => 'Productivity'], 'slug' => 'productivity']);
     $role = makeRole('manager', 40);
 
     $response = $this->postJson('/api/tools', [
