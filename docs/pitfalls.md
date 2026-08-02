@@ -137,6 +137,15 @@ only sends additions passes an add-only test unchanged.
 
 **3. The terminal truncates output.** Never judge by a clipped result — `cat` the real file.
 
+**3a. A Playwright click that "ran" is not a click that landed.** The login form is React-controlled;
+filling it right after `page.goto` can land before hydration, and then the button click does nothing:
+no navigation, no error message, typed text silently reset to empty. It reads exactly like a broken
+login. **The decisive signal is the network panel — zero `/api/` requests means the handler never
+fired**, so the bug is in the interaction, not the app. Confirm the app is innocent out-of-band
+(`curl` the same login) before debugging code that is fine. To get past it: seed
+`localStorage.auth_token` with a token minted by `curl` and navigate — the token flow is already
+covered elsewhere, so re-driving the form proves nothing new.
+
 **4. `git status` collapses NEW DIRECTORIES.** Use `git status --short -uall` or you cannot see
 what is about to be committed. Paths with square brackets need QUOTES in `git add`.
 Never `git add .`.

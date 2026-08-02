@@ -4,17 +4,16 @@ import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { localizedName } from "@/lib/localized-name";
+import { ADMIN_ROLES, hasAnyRole } from "@/lib/roles";
 import type { Tool } from "@/types";
 
 export function ToolCard({ tool }: { tool: Tool }) {
   const t = useTranslations("common");
   const locale = useLocale();
   const { user } = useAuth();
+  // Mirrors ToolPolicy::update — author, or an administrator. UX only.
   const canEdit = Boolean(
-    user &&
-      (tool.created_by === user.id ||
-        user.roles.includes("owner") ||
-        user.roles.includes("pm")),
+    user && (tool.created_by === user.id || hasAnyRole(user, ADMIN_ROLES)),
   );
 
   return (

@@ -10,6 +10,7 @@
     "dashboard": "Dashboard",
     "tools": "Tools",
     "profile": "Profile",
+    "settings": "Settings",
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "logout": "Logout",
@@ -57,6 +58,11 @@
     "submitting": "Signing in…",
     "invalidCredentials": "Incorrect email or password.",
     "genericError": "Something went wrong. Please try again."
+  },
+  "settings": {
+    "title": "Settings",
+    "categories": "Categories",
+    "users": "Users"
   },
   "tools": {
     "title": "AI Tools",

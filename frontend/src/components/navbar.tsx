@@ -8,6 +8,7 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { UserMenu } from "@/components/user-menu";
 import { useAuth } from "@/lib/auth-context";
 import { NAV_LINKS } from "@/lib/nav-links";
+import { hasAnyRole } from "@/lib/roles";
 
 function NavLinksList({
   className,
@@ -29,7 +30,9 @@ function NavLinksList({
 
   return (
     <nav className={className}>
-      {NAV_LINKS.map((link) => (
+      {NAV_LINKS.filter(
+        (link) => !link.requiredRoles || hasAnyRole(user, link.requiredRoles),
+      ).map((link) => (
         <Link
           key={link.href}
           href={link.href}

@@ -776,3 +776,76 @@ three languages at once — on the next `db:seed`.
   tool uses the category.
 - Auto-generating the slug from the Bulgarian name — impossible by construction (ADR-26): `Str::slug`
   cannot transliterate Cyrillic into the required English slug.
+
+---
+
+## ADR-29: The Settings section — role-filtered navigation, a reusable role helper, and RequireRole
+
+**Status:** Accepted
+
+**Context:** This is the frontend groundwork for the Settings area and the **first role-restricted
+section in the app**. ADR-15 built the navigation with a `requiredRole?: Role` field on every nav
+entry and then left it unset on all of them, because no section was role-restricted yet; ADR-17
+repeated that links are shown or hidden by auth state only, never by role. Reconnaissance confirmed
+the field was still dead: `requiredRole` appeared exactly twice in `src/`, both times in its own
+declaration, and `navbar.tsx` mapped `NAV_LINKS` without filtering. The only role check anywhere in
+the frontend was inline in `tool-card.tsx` — `user.roles.includes("owner") || user.roles.includes("pm")`
+— a hand-copy of `ToolPolicy` with no shared helper. The developer settled the behaviour: manager and
+employee are redirected to the dashboard rather than shown a 403 screen, and Settings is a plain nav
+link to a page with two sections, not a dropdown.
+
+**Decision:** (1) **Dictionary keys went in first, as their own step** (`nav.settings` and a
+`settings.*` section in both locales), before any code referenced them — `messages/bg/common.json` is
+the type source for `t()`, so the reverse order fails to compile. Both dictionaries verified in sync
+at 99 keys each. (2) A new `src/lib/roles.ts` holds `ADMIN_ROLES = ["owner", "pm"]` and
+`hasAnyRole(user, roles)`. One place now names the administrator pair the backend policies check
+(ToolPolicy ADR-12, CategoryPolicy ADR-28), instead of the role names being retyped at each call site.
+(3) `NavLink.requiredRole?: Role` becomes **`requiredRoles?: readonly Role[]`** — a list, because the
+admin sections are open to owner OR pm, which a single-role field cannot express. `navbar.tsx` filters
+on it; both ends of the chain were written together, since a field that nothing reads is exactly the
+"chain with a missing middle" from pitfalls #1. (4) `RequireRole` (`src/components/require-role.tsx`)
+renders children only for a signed-in user holding one of `roles`, redirecting a signed-out visitor to
+`/login` and a signed-in one without the role to the dashboard. It **covers the signed-out case itself
+rather than requiring a `RequireAuth` wrapper**, so a page cannot end up half-guarded by using only one
+of the two. (5) `/settings` is a server component following the `/tools` pattern (`setRequestLocale`,
+`getTranslations`), wrapped in `RequireRole roles={ADMIN_ROLES}`, rendering the two section headings.
+Neither section is a link yet, because neither screen exists. (6) `tool-card.tsx` now calls
+`hasAnyRole(user, ADMIN_ROLES)` instead of its inline pair.
+
+**Consequences:**
+- All frontend role checks are **UX only** and this is stated in the code, not just in an ADR. The
+  guard is the backend policy: a bypassed redirect reaches a shell whose API calls answer 403, which
+  ADR-28's tests already prove.
+- Verified in a real browser across **both roles that must not see it and both locales**, which is the
+  only check that discriminates: owner on `/bg` sees the link and the page renders
+  Настройки / Категории / Потребители; **employee** does not see the link, and typing `/bg/settings`
+  directly lands on the dashboard; **manager** on `/en` likewise, redirected to `/en`; owner on `/en`
+  sees Settings / Categories / Users. Console clean — 0 errors, 0 warnings across the whole run.
+- `npx tsc --noEmit` and `npm run lint` clean.
+- The `requiredRoles` rename touched every declaration site at once; `tsc` would have caught a missed
+  one, since the old name no longer exists on the type.
+- **Carried forward, recorded here because the project keeps no separate backlog file:**
+  1. `ToolController` still authorizes in the controller body, so a non-admin sending an invalid tool
+     payload gets a 422 listing the validation rules before the 403. The developer's decision is that
+     ADR-28's Form Request placement is the direction of travel and `ToolController` should be aligned
+     to it later — deliberately not done now, to keep this phase's diff to its own subject.
+  2. CLAUDE.md's Architecture section requires business logic in `app/Actions/` or `app/Services/`.
+     **Neither directory exists**, and `ToolController` and `CategoryController` both hold their logic
+     inline. The rule is stale relative to the code. Creating those directories is an ask-first "new
+     kind of thing", so nothing was created and CLAUDE.md was not edited. To be settled deliberately
+     after the categories UI phase: either the code moves to the contract or the contract to the code.
+  3. ADR-28's blocked-delete 422 carries an English sentence with the tool count inside it, so a
+     Bulgarian UI cannot translate it. If the categories screen needs a localised "used by N tools",
+     the count has to travel as a separate field in the response — an API-shape decision for that
+     phase, not resolved here.
+
+**Alternatives considered:**
+- Keeping `requiredRole` singular and duplicating the Settings entry per role — rejected; it would
+  render the link twice for a user holding both roles.
+- A `canManageSettings(user)` predicate instead of a roles list — rejected: `NavLink` would then carry
+  a function instead of data, and the nav table stops being declarative.
+- Composing `<RequireAuth><RequireRole>` at every call site — rejected per (4); two wrappers that must
+  both be remembered is a guard waiting to be half-applied.
+- A dedicated 403 page for a signed-in user without the role — rejected by the developer; redirecting
+  matches what `RequireAuth` already does, and one behaviour is easier to reason about than two.
+- Making the two sections links now — rejected: they would be 404s until their phases land.
