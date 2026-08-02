@@ -1079,3 +1079,120 @@ live token" is editing the database by hand.
   costs a real employee a support call.
 - Setting `is_active` in `UserFactory::definition()` instead of on the model — rejected: it would make
   every test pass while production code kept the null, which is the opposite of what a test is for.
+
+---
+
+## ADR-33: User management endpoints — one rule per endpoint, a pm that cannot touch an owner, and deactivation that revokes tokens
+
+**Status:** Accepted
+
+**Context:** ADR-32 added the `is_active` flag and blocked a deactivated login. This phase is the
+management surface on top of it: list, create, edit, change roles, reset password, activate,
+deactivate. It is the largest authorization surface in the project so far, and the developer settled
+every rule before any code was written — owner and pm manage users; a pm may not act on an owner at
+all; only an owner grants or revokes the `owner` role; nobody changes their own roles or deactivates
+themselves; anybody who may manage users may reset their OWN password, because `/profile` does not
+exist and there is no self-service reset, so an admin without that path is permanently locked out on
+a forgotten password; users are never deleted.
+
+One question could not be answered from the settled rules and was put back to the developer: if name,
+email, department and roles travel in a single `PUT`, then "an admin may edit their own name but not
+their own roles" has to be enforced by the *frontend omitting a field*, which is the "chain with a
+missing middle" failure recorded as process gotcha #1 — `tsc` cannot see it and nothing goes red when
+it is forgotten. The developer chose to split the endpoints instead.
+
+**Decision:** (1) **Seven routes, one concern each**, so every rule is a separate policy ability with
+its own test rather than a branch inside a shared handler: `GET /api/users`, `POST /api/users`,
+`PUT /api/users/{user}` (name, email, department only), `PUT /api/users/{user}/roles`,
+`PUT /api/users/{user}/password`, `POST /api/users/{user}/activate`,
+`POST /api/users/{user}/deactivate`. **There is no DELETE route and its absence is commented in
+`routes/api.php`**, so the omission reads as a decision rather than an oversight.
+(2) `UserPolicy` composes each ability from three predicates: `isAdmin` (explicit `hasRole('owner')
+|| hasRole('pm')`, never a level threshold — ADR-12's reasoning), `mayActOn` (**a pm may not act on an
+owner at all** — one rule instead of three exceptions, chosen by the developer over partial
+permissions), and a self-exclusion on `updateRoles` and `deactivate` only. `updatePassword`
+deliberately has no self-exclusion.
+(3) **Authorization lives in the Form Requests' `authorize()`**, the ADR-28 placement, so a manager
+gets 403 whatever they send instead of a 422 that hands the validation rules to someone who may not
+write at all. `activate`/`deactivate` carry no payload and therefore have no Form Request; they
+authorize in the controller body, the same split `CategoryController::destroy` already uses.
+(4) The "only an owner touches the owner role" rule depends on the *payload*, so it lives in
+`authorize()` too, reading the submitted ids defensively (`Arr::wrap` + int cast) because the payload
+is unvalidated at that point. It is written **symmetrically** — the requested set must not change
+whether the target holds the owner role — even though the revoke direction is today also blocked
+upstream by `mayActOn`, so the guarantee survives if that upstream rule is ever relaxed.
+(5) On `PUT /api/users/{user}`, `role_ids` and `password` are **`prohibited`**, mirroring the
+immutable category slug (ADR-28): they have their own endpoints with their own rules, and a silently
+ignored field is how a caller comes to believe it changed something it did not.
+(6) **`deactivate` deletes the target's Sanctum tokens.** This is the entire mechanism by which a
+deactivated user loses access, since ADR-32 deliberately declined a per-request middleware.
+(7) A private `userPayload()` in the controller defines the exact wire shape — `id, name, email,
+is_active, department_id, roles[{id, name, display_name, level}]` — rather than returning the model,
+so timestamps, the password hash and the belongsToMany `pivot` object never enter the contract. The
+list is a **plain array, deliberately not paginated** (ADR-18's reasoning: tens of employees, not
+thousands) and **includes deactivated users**, because reactivating one has to be possible somewhere.
+(8) `UserSeeder` switches from `updateOrCreate` to **`firstOrCreate`**, with roles attached only when
+the row was just created — the ADR-28 (9) decision, now due because users become editable in this
+phase. Two users were added: a pm (`maria@pm.local`) and a deactivated employee
+(`georgi@inactive.local`), so the pm/owner rules and the deactivated row have something to be
+verified against in the browser rather than only in Pest.
+
+**Consequences:**
+- Two new test files, **58 new test cases**; full suite **124 tests / 330 assertions** green
+  (66 pre-existing + 58). There is a 403 test for every one of the seven operations, and each asserts
+  that **nothing was written**, not merely the status code.
+- **Ten mutations, each red on its own test and nothing else:** removing the token deletion; `sync` →
+  `syncWithoutDetaching`; dropping the self-exclusion from `deactivate`; dropping it from
+  `updateRoles`; making `mayActOn` always true; removing the owner-role check from create; removing it
+  from the roles endpoint; dropping the two `prohibited` rules; lowering the password minimum to 7;
+  and **moving authorization out of the Form Request into the controller body** — which reds exactly
+  the "403, not 422" test, re-confirming ADR-28's placement is load-bearing rather than stylistic.
+- Making `mayActOn` always true did **not** red "a pm cannot change an owner's roles": decision (4)'s
+  symmetric check blocks it independently. The defence in depth is real, and it is visible because the
+  mutation was run.
+- **The token test initially failed and the code was innocent.** Laravel's test client keeps the
+  guard's resolved user between requests inside one test, so the second call answered as the owner
+  from the first call instead of resolving the revoked Bearer token. curl against the live API proved
+  the real behaviour (200 → deactivate → 401 with the same token); the test was fixed with
+  `$this->app['auth']->forgetGuards()`, not weakened. Recorded in `docs/pitfalls.md`.
+- **`department_id` is outside `#[Fillable]`**, like `is_active`, so mass assignment silently drops
+  it. The controller sets it by direct property assignment in both `store` and `update`. This was
+  caught by the implementing agent, not by the specification. Recorded in `docs/pitfalls.md`.
+- **`PUT /api/users/{user}` CLEARS the department when `department_id` is omitted**, because the rule
+  is `nullable` and `validated()` returns null for an absent key. This is the ADR-23 contract on
+  purpose — `ToolPayload` has no optional fields for exactly this reason — and it means the frontend
+  form must always send an explicit value. Flagged here for the UI phase.
+- Verified against the live API with curl: employee 403 on listing and 403 (not 422) on a junk create
+  payload; pm 403 on updating, deactivating and role-granting against the owner, 403 on deactivating
+  herself and on changing her own roles, but 200 on editing her own name; `role_ids` on the update
+  endpoint answers 422 naming `role_ids`; the list returns a plain array of five users with exactly
+  the documented keys, ordered by name in Bulgarian collation, with the deactivated user reporting
+  `is_active: false`.
+- **`firstOrCreate` was proven, not assumed**, the ADR-28 way: a user was renamed through the API,
+  `db:seed --class=UserSeeder` was re-run, and the admin's name survived while the two new users were
+  created (3 → 5 users, 3 → 5 `role_user` rows). The dev database was then restored to the seeded
+  names.
+- Pint clean on all nine new or edited files. `UserSeeder` still reports `no_unused_imports`, which was
+  confirmed pre-existing by running Pint against the HEAD version of the same file and against the two
+  untouched sibling seeders — the ADR-26/27/28 finding, re-confirmed and again left alone (pitfalls
+  #11). Pint's automatic fix was applied and then **reverted**, because the only thing it changed was
+  that unrelated scaffold import.
+- The frontend phase can now be built against a complete backend: `getUsers`, `createUser`,
+  `updateUser`, `updateUserRoles`, `updateUserPassword`, `activateUser`, `deactivateUser`.
+
+**Alternatives considered:**
+- One `PUT /api/users/{user}` carrying roles as well, rejecting the request when a user sends roles
+  for their own account — rejected by the developer: it distributes one rule across both ends of the
+  wire, and nothing goes red if the frontend forgets to omit the field.
+- Partial permissions for a pm over an owner (may edit the name, may not change roles) — rejected by
+  the developer in favour of one blanket rule; exceptions are what make an authorization matrix
+  unreviewable.
+- Reviving `hasAtLeastLevel(60)` for "owner or pm" — rejected again, for ADR-28's reason: it silently
+  grants the right to any future role seeded at level 60 or above.
+- A `role:owner,pm` middleware instead of a policy — rejected: the project has no middleware aliases
+  at all, and this would be a second authorization mechanism beside policies.
+- Paginating the user list — rejected per ADR-18: pagination serves growing datasets, not a company
+  roster of tens.
+- API Resource classes for the wire shape — rejected: the project has no Resource layer, and adding
+  one is an ask-first "new kind of thing". A private method on the controller does the same job for
+  one resource.

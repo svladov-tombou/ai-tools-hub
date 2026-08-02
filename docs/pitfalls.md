@@ -95,6 +95,11 @@ Model default and column default are TWO guarantees: assert them separately, the
 the factory and the column one through a raw `DB::table()->insert()` that bypasses the model.
 Either assertion alone passes with the other mechanism missing.
 
+**`User`'s `#[Fillable]` is `name, email, password` — nothing else.** `department_id` and
+`is_active` are outside it on purpose, so `User::create([... 'department_id' => 3])` and
+`$user->update([...])` **silently drop them**. Set them by direct property assignment before
+`save()`. No error, no warning; the field simply never lands.
+
 **A boolean column needs its cast or it serializes as `1`/`0`.** MySQL returns a tinyint, so without
 `'is_active' => 'boolean'` in `casts()` the JSON carries integers and a frontend `boolean` type is a
 lie. `expect(...)->toBeTrue()` fails on `1`, which is what makes it a real test; `assertJson` would
@@ -167,6 +172,16 @@ fired**, so the bug is in the interaction, not the app. Confirm the app is innoc
 `localStorage.auth_token` with a token minted by `curl` and navigate — the token flow is already
 covered elsewhere, so re-driving the form proves nothing new.
 
+**3b. The test client keeps the authenticated user BETWEEN requests inside one test.** A second
+`$this->withHeader('Authorization', "Bearer ...")` call does not re-resolve the guard: it answers as
+whoever the FIRST request authenticated. So a "this revoked token no longer works" assertion returns
+**200 and the app is innocent** — the request never looked at the token. Symptom shape is identical to
+a real security hole, so confirm out-of-band with `curl` before touching the code (it went
+200 → deactivate → 401 live, exactly as intended). Fix inside the test with
+`$this->app['auth']->forgetGuards();` between the two requests. Note `Sanctum::actingAs()` sets the
+guard's user directly and would mask the Bearer header entirely — use REAL tokens
+(`->createToken('t')->plainTextToken`) whenever the token itself is what is under test.
+
 **4. `git status` collapses NEW DIRECTORIES.** Use `git status --short -uall` or you cannot see
 what is about to be committed. Paths with square brackets need QUOTES in `git add`.
 Never `git add .`.
@@ -233,4 +248,8 @@ Files over the size ceiling (run from repo root):
       -exec wc -l {} + | sort -rn | head -20
 
 Seed users (password `password`):
-ivan@admin.local = owner | elena@manager.local = manager | petar@employee.local = employee
+ivan@admin.local = owner | maria@pm.local = pm | elena@manager.local = manager |
+petar@employee.local = employee | georgi@inactive.local = employee, DEACTIVATED (cannot log in)
+
+`UserSeeder` and `CategorySeeder` use `firstOrCreate`: re-seeding never overwrites a row that already
+exists, so it cannot undo an edit made through the UI. A clean slate needs `migrate:fresh --seed`.

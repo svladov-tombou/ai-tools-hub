@@ -5,6 +5,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ToolController;
+use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -33,4 +34,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
     Route::get('/roles', [RoleController::class, 'index']);
     Route::get('/departments', [DepartmentController::class, 'index']);
+
+    Route::get('/users', [UserController::class, 'index']);
+    Route::post('/users', [UserController::class, 'store']);
+    Route::put('/users/{user}', [UserController::class, 'update']);
+    Route::put('/users/{user}/roles', [UserController::class, 'updateRoles']);
+    Route::put('/users/{user}/password', [UserController::class, 'updatePassword']);
+    Route::post('/users/{user}/activate', [UserController::class, 'activate']);
+    Route::post('/users/{user}/deactivate', [UserController::class, 'deactivate']);
+    // No DELETE route: users are deactivated, never deleted.
 });

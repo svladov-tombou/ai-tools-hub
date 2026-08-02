@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,4 +49,24 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * Creates a user and attaches the given role, WITHOUT authenticating as them.
+ * Levels mirror RoleSeeder; tests do not seed. `firstOrCreate` (not `create`) matters:
+ * a single test often needs two users with the same role (two owners, say), and
+ * `Role::create` would collide on the unique name.
+ */
+function createUserWithRole(string $roleName, array $attributes = []): User
+{
+    $levels = ['owner' => 100, 'pm' => 60, 'manager' => 40, 'employee' => 20];
+
+    $user = User::factory()->create($attributes);
+
+    $user->roles()->attach(Role::firstOrCreate(
+        ['name' => $roleName],
+        ['display_name' => ucfirst($roleName), 'level' => $levels[$roleName]],
+    ));
+
+    return $user->load('roles');
 }
