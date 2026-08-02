@@ -20,6 +20,9 @@ When unsure whether something qualifies, ask.
 Add dictionary keys as their own step, before the code that uses them. Both `bg` and `en` stay in sync.
 Never silence a `t()` type error with `as never` or eslint-disable — that error is the check working.
 No hardcoded user-facing strings anywhere.
+Two mechanisms: UI text and fixed-slug labels (roles, departments) live in the dictionary,
+category names in the DATABASE (ADR-27). Never translate user-creatable rows through the
+dictionary — a typed dictionary cannot cover rows that do not exist at build time.
 
 ## Roles
 Exactly four, seeded with a numeric `level`: owner (100), pm (60), manager (40), employee (20).
