@@ -107,6 +107,21 @@ without `'name' => 'array'` in `casts()` throws
 `Grammar::parameterize(): Argument #1 ($values) must be of type array, string given` from deep
 inside the query builder. The message names the grammar, not the missing cast.
 
+## Authorization
+
+**A Form Request's `authorize()` runs BEFORE `rules()`.** Where the check lives decides what an
+unauthorized user sees. In the Form Request: 403 whatever the payload. In the controller body
+(`$this->authorize(...)`): validation fires first, so a manager sending junk gets a **422 listing
+the validation rules** and only a valid payload gets 403. Neither writes anything, but only the
+first keeps the rules private. `CategoryController` uses the Form Request; `ToolController` uses
+the controller body. Decide deliberately, and write the test that tells them apart — a non-admin
+sending an INVALID payload.
+
+**`get(['id', 'slug'])` returns null for every column you did not select.** A snapshot query that
+prints `name` after selecting only id and slug shows `null` for all five rows — which reads exactly
+like "the migration wiped the names". The data was fine; the query was. Snapshots are the tool used
+to prove a rename in place, so a broken snapshot is worse than none.
+
 ## Process gotchas
 
 **1. The chain with a missing middle — the most expensive bug so far.** Both ends exist, the

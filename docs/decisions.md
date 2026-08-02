@@ -672,3 +672,107 @@ so `routing.locales` is untouched.
   complexity in the migration to restore a constraint that no code ever relied on.
 - Sorting on the backend by `name->>'$.bg'` — rejected: it is deterministic but pins the order to
   Bulgarian in every language, and the frontend can order correctly for free.
+
+---
+
+## ADR-28: Category write endpoints — owner/pm policy, authorization before validation, deletion blocked while in use
+
+**Status:** Accepted
+
+**Context:** ADR-18 deferred category CRUD to "its own later phase: it needs a policy restricting
+management to owner/pm plus a guarded admin UI". This is the backend half of that phase, and the
+first write endpoint in the project outside tools. Reconnaissance of the real code established the
+starting point: the only role check in the whole backend was `ToolPolicy::update` (`created_by ==
+user || hasRole('owner') || hasRole('pm')`); there was no role middleware at all (`bootstrap/app.php`
+has an empty `withMiddleware()`); `User::hasAtLeastLevel()` and `highestRole()` exist but are called
+nowhere; and there was no `CategoryPolicy`, no Form Request for categories and no write route. The
+developer settled the product rules up front: owner and pm get full CRUD, manager and employee get
+403 on every write, deleting a category that tools still use is refused, `bg` is mandatory in the
+translation map while `en`/`fr` are optional, unknown language keys are rejected, and the slug is
+validated for format and frozen after creation.
+
+**Decision:** (1) `CategoryPolicy` with `viewAny`/`view` open to any authenticated user (the filter
+dropdown and the tool form need the list, ADR-18) and `create`/`update`/`delete` restricted to
+`hasRole('owner') || hasRole('pm')` — **explicit role names, mirroring ToolPolicy (ADR-12)**; the
+`level` helpers stay unused on purpose. (2) **Authorization lives in the Form Request's `authorize()`,
+not in the controller body**, for `store` and `update`. This is a deliberate deviation from
+`ToolController`'s `$this->authorize(...)` pattern and it buys something testable: `authorize()` runs
+BEFORE validation, so a manager gets 403 whatever they send, where the controller-body pattern would
+answer 422 first and hand the validation rules to a user who may not write at all. `destroy` has no
+Form Request and authorizes in the controller. (3) The translation map is validated with
+`'name' => ['required', 'array:bg,en,fr']` — Laravel's keyed `array` rule rejects unknown languages,
+which would otherwise be stored and never rendered, since the frontend reads only those three.
+`name.bg` is `required` because it is the fallback the frontend falls back TO (ADR-27); `name.en` and
+`name.fr` are `['sometimes', 'string', 'filled', 'max:255']`, where `filled` is doing real work —
+`""` is a valid string and would render as a blank label instead of falling back to Bulgarian.
+`max:255` per language mirrors the original `VARCHAR(255)` and `StoreToolRequest`'s `name` rule; the
+column is JSON now, so without a rule an entire document is accepted silently (the ADR-22 problem).
+(4) The slug is validated with `regex:/^[a-z0-9]+(-[a-z0-9]+)*$/` plus `unique`. It is the wire
+vocabulary (ADR-26), travelling in `?category=<slug>`; Cyrillic, spaces or capitals produce a filter
+URL that looks fine and matches nothing, and `Str::slug` cannot derive it from a Bulgarian name, so
+it is typed by hand and the format must be enforced. (5) The slug is **immutable after creation**:
+`UpdateCategoryRequest` marks it `prohibited`, so an attempt to change it is a loud 422 rather than a
+silently dropped field. Saved filter URLs stay valid and `CategorySeeder`'s `firstOrCreate` key stays
+stable. (6) `name` is `required` on update, not `sometimes`: it is one JSON value, so a partial map
+REPLACES the stored one and `{"bg": "..."}` would silently drop the English and French translations —
+the same reasoning as `ToolPayload` having no optional fields (ADR-23). (7) `destroy` **refuses with
+422 and the count** while tools use the category. The `category_tool` foreign keys cascade, so a
+delete would quietly detach the category from every tool with no trace; `ValidationException::
+withMessages` keeps the response shape identical to every other 422, which `api.ts` already handles.
+No soft delete. (8) `store` and `update` return `$category->only(['id', 'name', 'slug'])` — the exact
+shape `index` returns, so a category looks the same everywhere and timestamps do not leak into the
+contract (ADR-18's enumerated-columns rule). (9) `CategorySeeder` switches from `updateOrCreate` to
+**`firstOrCreate`**, closing the open question recorded in ADR-26 and enlarged in ADR-27: with
+categories editable in Settings, `updateOrCreate` would overwrite an admin's renamed category — all
+three languages at once — on the next `db:seed`.
+
+**Consequences:**
+- 28 new Pest tests in `tests/Feature/CategoryAdminTest.php`; full suite **59 tests / 150 assertions**
+  green (31 pre-existing + 28).
+- **Every guarantee was proven to go red on purpose**, one mutation at a time, rather than assumed to
+  discriminate: opening the policy to everyone failed exactly the 7 authorization tests; relaxing the
+  `prohibited` slug rule failed only the immutability test; `array` instead of `array:bg,en,fr` failed
+  only the unknown-key test; removing the tool-count guard failed only the blocked-delete test. Each
+  mutation broke its own test and nothing else.
+- The 403-tests assert that **nothing was written**, not merely the status code — hiding a menu is not
+  a guard, and neither is a status code with a side effect behind it.
+- One test only passes because of decision (2): a manager sending an invalid payload gets **403, not
+  422**. Under the controller-body pattern it goes red. That test is the reason the deviation is worth
+  its inconsistency.
+- The name-length rule is a **boundary pair** (255 accepted, 256 rejected), per the ADR-22 lesson: a
+  10,000-character test would also pass against `max:9999`. The slug-format rule is likewise a pair —
+  seven invalid forms rejected AND a valid hyphenated slug accepted, so a regex that rejects
+  everything cannot pass.
+- Verified with curl against the live API and a real Bearer token before this was written: employee
+  403 (with a valid payload and with junk), owner 201 → 200 rename → 422 on a slug change → 422 on
+  deleting a category with 3 tools, naming the 3 → 204 deleting the empty throwaway.
+- **`firstOrCreate` was proven, not assumed**: category 1 was renamed through the API, `db:seed
+  --class=CategorySeeder` was re-run, and the admin's name survived. The dev database was then
+  restored and snapshotted — the same 5 ids, the same 5 slugs, the same per-category tool counts
+  (3/2/4/3/6) and the same 18 `category_tool` rows as in the ADR-26 and ADR-27 snapshots.
+- The seeder can no longer change a name in a database where the row already exists. That is the
+  deliberate trade: seed authority given up in exchange for not destroying user data.
+- **Debt handed to the frontend phase:** the 422 for a blocked delete carries an English prose message
+  with the count embedded in it, so a Bulgarian UI cannot localise it — the same debt ADR-23 recorded
+  for all Laravel validation messages. If the Settings UI needs a translated "used by N tools", the
+  count has to travel as data, which is an API-shape decision for that phase.
+- Pint reports `no_unused_imports` on `CategorySeeder`, exactly as it does for the HEAD version of the
+  same file — pre-existing scaffold debt re-confirmed, not introduced (pitfalls #11).
+
+**Alternatives considered:**
+- Authorizing in the controller body like `ToolController` — rejected per (2); consistency loses to a
+  guard that bites before validation, and the difference is provable in a test.
+- A `role:owner,pm` route middleware instead of a policy — rejected: the project has no middleware
+  alias and no role middleware at all, so this would introduce a second authorization mechanism
+  alongside policies for one resource.
+- Reviving `hasAtLeastLevel(60)` for "owner or pm" — rejected. It is terser but it silently grants the
+  right to any future role seeded at level 60 or above, and ADR-12 chose explicit names for exactly
+  that reason.
+- Soft-deleting categories — rejected by the developer; blocking is honest and needs no schema change.
+- Letting the delete cascade — rejected: tools would lose a category with no error and no record.
+- An editable slug — rejected by the developer; a renamed slug breaks saved `?category=` URLs and
+  makes the next `db:seed` recreate the original category as a NEW row, since `firstOrCreate` would
+  not find the old key. The cost is that a typo'd slug cannot be corrected through the UI while any
+  tool uses the category.
+- Auto-generating the slug from the Bulgarian name — impossible by construction (ADR-26): `Str::slug`
+  cannot transliterate Cyrillic into the required English slug.

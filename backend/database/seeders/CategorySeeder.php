@@ -44,7 +44,12 @@ class CategorySeeder extends Seeder
         ];
 
         foreach ($categories as $slug => $name) {
-            Category::updateOrCreate(['slug' => $slug], ['name' => $name, 'slug' => $slug]);
+            // firstOrCreate, NOT updateOrCreate: categories are editable through Settings now,
+            // and updateOrCreate would overwrite an admin's renamed category — all three
+            // languages at once — on the next db:seed. The open question from ADR-26/27.
+            // The cost is that changing a name here no longer reaches an existing database;
+            // that is a deliberate trade of seed authority for user data.
+            Category::firstOrCreate(['slug' => $slug], ['name' => $name, 'slug' => $slug]);
         }
     }
 }

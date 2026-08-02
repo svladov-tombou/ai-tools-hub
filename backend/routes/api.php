@@ -28,6 +28,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/tools/{tool}', [ToolController::class, 'destroy']);
 
     Route::get('/categories', [CategoryController::class, 'index']);
+    Route::post('/categories', [CategoryController::class, 'store']);
+    Route::put('/categories/{category}', [CategoryController::class, 'update']);
+    Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
     Route::get('/roles', [RoleController::class, 'index']);
     Route::get('/departments', [DepartmentController::class, 'index']);
 });
