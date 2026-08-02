@@ -20,6 +20,15 @@ class AuthController extends Controller
             ]);
         }
 
+        // Checked only after the password, so that someone who does not know the password
+        // cannot learn from the response whether a given email exists and is deactivated.
+        // No token is issued.
+        if (! $user->is_active) {
+            throw ValidationException::withMessages([
+                'email' => ['This account has been deactivated. Please contact an administrator.'],
+            ]);
+        }
+
         $token = $user->createToken('api-token')->plainTextToken;
 
         return response()->json([

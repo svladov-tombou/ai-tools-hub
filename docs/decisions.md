@@ -978,3 +978,104 @@ from strings to objects in both dictionaries, and `/settings` now links to the c
   backend, so a local patch would show a stale count on the row just edited.
 - Letting the delete button stay enabled and explaining the failure afterwards — rejected in ADR-30;
   that is the whole reason `tools_count` was added.
+
+---
+
+## ADR-32: Users are deactivated, not deleted — `is_active` on users, login blocked, no per-request check
+
+**Status:** Accepted
+
+**Context:** This is the first phase of user management (part 3), and the backend foundation for it.
+Reconnaissance of the real code established the starting point rather than assuming it: `users` had
+`id, name, email, email_verified_at, password, remember_token, timestamps` plus the `department_id`
+added in ADR-20 (nullable, **never used** — every user row is null); there was **no `UserPolicy`, no
+`UserController` and not a single `/api/users` route**; `GET /api/user` is a closure returning the
+whole model; and `AuthController::login` checked only the password, with Sanctum tokens carrying no
+post-issue validity check of any kind. The developer settled the product rules up front: a user is
+never deleted, only deactivated; a deactivated user cannot log in, does not appear in pickers, and
+remains the author of the tools they created. This phase implements only the flag and the login
+block — the management endpoints (list/create/update/activate/deactivate) and their policy are the
+next phase, deliberately kept out so this diff stays on one subject.
+
+**Decision:** (1) A boolean `is_active`, **NOT NULL, default true**, added `after('password')`.
+A boolean rather than a `deactivated_at` timestamp: it maps one-to-one onto what the UI shows and
+what queries filter on, and the project has no audit trail anywhere else (only `created_by`), so a
+timestamp would store a value nothing reads. This exceeds "adding a nullable column" and was
+therefore approved by the developer, not decided here. (2) `is_active` is **deliberately outside
+`#[Fillable]`**, exactly like `Tool::created_by` (`docs/pitfalls.md`): the flag will be changed only
+by a dedicated authorized action, never by whatever a request body happens to carry. (3) The model
+carries **both** a `'is_active' => 'boolean'` cast and a `protected $attributes = ['is_active' =>
+true]` default — see the consequences; these are two different guarantees, not redundancy. (4) Login
+is refused for a deactivated user with a `ValidationException` (422, `email` key), so the body shape
+is identical to every other validation error and `api.ts` already renders it — no frontend change was
+needed. The message is explicit ("This account has been deactivated…") rather than the generic
+credentials error: this is an internal tool, and an employee who cannot log in needs to know to call
+an administrator instead of assuming they mistyped. It is English, the ADR-23 debt, accepted.
+(5) **The check runs AFTER the password check, and the order is part of the requirement**: verifying
+the password first means an unauthenticated caller cannot learn from the response whether a given
+email exists and is deactivated. (6) **No middleware and no per-request check was added.** An
+existing token stays valid; the guarantee that a deactivated user holds no token comes instead from
+the deactivation *action* deleting their tokens, which lands in the next phase. This is a guarantee
+by construction — login is the only way a token is issued, so the only path into "inactive with a
+live token" is editing the database by hand.
+
+**Consequences:**
+- Six new Pest tests in `tests/Feature/UserAccountStatusTest.php`; full suite **66 tests / 167
+  assertions** green (60 pre-existing + 6). Pint clean on all five touched files.
+- **The planned test "a deactivated user with a valid token is rejected" was dropped, not quietly
+  weakened.** Under decision (6) it does not describe what the code does; it belongs to the next
+  phase as "deactivating deletes the tokens, and the old token then answers 401". Writing it here
+  would have asserted a guarantee the system does not make.
+- **Every guarantee was proven to go red on purpose**, one mutation at a time: removing the login
+  check failed only the deactivated-login test; moving the check above the password check failed only
+  the state-leak test; dropping the model default failed only the in-memory assertion; dropping the
+  cast failed both boolean assertions; dropping the column default made the raw insert error with
+  MySQL 1364. Each mutation broke its own test.
+- **A column default is a DATABASE default, and Eloquent never reads it back after an insert.** The
+  test written to assert "a new user is active by default" went red on the *model*, not the database:
+  the stored row said 1 while the in-memory instance said `null`. That null is falsy, so
+  `! $user->is_active` would read a brand-new user as deactivated, and the create endpoint of the
+  next phase would have returned `"is_active": null` against a row that says true. Fixed at the cause
+  with `protected $attributes`, not by refreshing the model in the test. Recorded in
+  `docs/pitfalls.md`.
+- The two defaults are asserted **separately**, because they are separate guarantees: the model
+  default via `User::factory()->create()`, and the column default via a raw `DB::table()->insert()`
+  that bypasses the model entirely. Either assertion alone would pass with the other mechanism
+  missing.
+- Verified against the live API with curl before this was written: an active login returns 200; the
+  same credentials after flipping the flag in the dev database return 422 with the deactivation
+  message; a **wrong** password on the same deactivated account returns the *credentials* message, so
+  the state does not leak; and a token minted before deactivation **still answers 200** — decision (6)
+  demonstrated rather than assumed. The dev database was restored and snapshotted: the same three
+  users, all `is_active = 1`.
+- `#[Fillable]` is unchanged, so nothing in the existing write paths can set the flag. The next phase
+  must set it by direct property assignment, not through mass assignment.
+- The column widens `GET /api/user` and the `user` object in the login response, both of which return
+  the whole model. This was approved as an additive change (ADR-31-era rule: an existing response
+  shape is an ask-first decision); no consumer breaks, because the frontend ignores unknown fields.
+
+**Carried forward to the next phase (the project keeps no separate backlog file):**
+1. **`UserSeeder` still uses `updateOrCreate` keyed on email.** Once administrators can rename users
+   and change their roles through Settings, the next `db:seed` will overwrite an admin's edit and
+   reset the password to `password` — precisely the problem ADR-28 (9) solved for categories by
+   switching to `firstOrCreate`. Not changed here, because nothing is editable yet; it must be
+   decided in the phase that makes users editable.
+2. **No `pm` user is seeded.** The three seeded users are owner, manager and employee, so the
+   pm-specific rules agreed for the next phase (a pm may not touch an owner at all) cannot be
+   exercised in the browser against dev data. Whether to seed a pm user, and a deactivated user to
+   make the list screen's marked state visible, is seed-data product input for that phase.
+3. `department_id` remains unused on every user. The agreed plan assigns it in the user form; if that
+   phase grows too large, the developer named it as the first thing to drop.
+
+**Alternatives considered:**
+- A `deactivated_at` nullable timestamp — rejected per (1); it is the cheapest schema change under
+  CLAUDE.md's rules and records *when*, but nothing in this project reads an audit timestamp.
+- A middleware (or a Sanctum token-validity callback) rejecting every request from an inactive user —
+  rejected: it introduces a second authorization mechanism for an outcome that deleting the tokens
+  already achieves, and the project has no middleware aliases at all (`bootstrap/app.php` has an empty
+  `withMiddleware()`).
+- The generic "credentials are incorrect" message for a deactivated account — rejected by the
+  developer; account enumeration is not a meaningful threat behind a corporate login, and the silence
+  costs a real employee a support call.
+- Setting `is_active` in `UserFactory::definition()` instead of on the model — rejected: it would make
+  every test pass while production code kept the null, which is the opposite of what a test is for.

@@ -85,6 +85,21 @@ only adds. Tests use a SEPARATE database (`phpunit.xml`), which is why `RefreshD
 `DB_CONNECTION`. So MySQL-specific raw SQL in a migration is safe — and, conversely, nothing
 protects you from writing SQL that only MySQL understands.
 
+**A column default is a DATABASE default; Eloquent never reads it back after an insert.** After
+`$table->boolean('is_active')->default(true)`, a freshly created model carries `is_active = null`
+in memory while the stored row says 1 — and `null` is falsy, so `! $user->is_active` reads a
+brand-new user as DEACTIVATED, and a create endpoint returns `"is_active": null` against a row that
+says true. The row is fine; the instance is not. Fix it at the cause with
+`protected $attributes = ['is_active' => true]`, never by calling `->fresh()` in the test.
+Model default and column default are TWO guarantees: assert them separately, the model one through
+the factory and the column one through a raw `DB::table()->insert()` that bypasses the model.
+Either assertion alone passes with the other mechanism missing.
+
+**A boolean column needs its cast or it serializes as `1`/`0`.** MySQL returns a tinyint, so without
+`'is_active' => 'boolean'` in `casts()` the JSON carries integers and a frontend `boolean` type is a
+lie. `expect(...)->toBeTrue()` fails on `1`, which is what makes it a real test; `assertJson` would
+not catch it.
+
 ## JSON columns (`categories.name`, ADR-27)
 
 **`orderBy()` on a JSON column does not sort — and does not complain.** `orderBy('name')` on the

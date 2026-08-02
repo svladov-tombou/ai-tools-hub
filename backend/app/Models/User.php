@@ -21,6 +21,19 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
+     * A column default is a DATABASE default: Eloquent does not read it back after an
+     * insert, so a freshly created User would carry `is_active = null` in memory while
+     * the stored row says 1. That null is falsy, so `! $user->is_active` would read a
+     * brand-new user as deactivated, and the JSON returned by a create endpoint would
+     * say null where the database says true. This keeps model and schema in agreement.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_active' => true,
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -30,6 +43,9 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            // Deliberately NOT in #[Fillable]: the flag is changed only by a dedicated,
+            // authorized action, never by whatever a request body happens to carry.
+            'is_active' => 'boolean',
         ];
     }
 
