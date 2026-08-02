@@ -9,6 +9,13 @@ export type LocalizedName = { bg: string; en?: string; fr?: string };
 
 export type Category = { id: number; name: LocalizedName; slug: string };
 
+/**
+ * What GET /api/categories returns (ADR-30). Kept separate from `Category` rather than
+ * being an optional field, because the categories embedded in a tool carry no count —
+ * an optional field would let a component read `tools_count` where it is never present.
+ */
+export type CategoryWithUsage = Category & { tools_count: number };
+
 export type DepartmentSlug =
   | "marketing"
   | "accounting"

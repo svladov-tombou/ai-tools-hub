@@ -61,8 +61,32 @@
   },
   "settings": {
     "title": "Settings",
-    "categories": "Categories",
-    "users": "Users"
+    "users": {
+      "title": "Users"
+    },
+    "categories": {
+      "title": "Categories",
+      "loading": "Loading categories…",
+      "loadError": "Could not load the categories. Please try again.",
+      "empty": "There are no categories yet.",
+      "addButton": "Add category",
+      "newTitle": "New category",
+      "editTitle": "Edit category",
+      "nameBg": "Name (Bulgarian)",
+      "nameEn": "Name (English)",
+      "nameFr": "Name (French)",
+      "slugLabel": "Slug",
+      "slugHint": "Lowercase Latin letters, digits and hyphens only. Cannot be changed after creation.",
+      "usedBy": "{count, plural, one {Used by # tool} other {Used by # tools}}",
+      "unused": "Not used",
+      "deleteButton": "Delete",
+      "editButton": "Edit",
+      "deleteConfirm": "Delete the category “{name}”?",
+      "deleteBlocked": "A category used by tools cannot be deleted.",
+      "validationFailed": "Please check the fields and try again.",
+      "saveError": "Could not save. Please try again.",
+      "deleteError": "Could not delete. Please try again."
+    }
   },
   "tools": {
     "title": "AI Tools",

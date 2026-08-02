@@ -58,6 +58,12 @@ A test caught that it was silently null, which made the whole ADR-12 rule dead c
 
 **On update, use `sync()`** (replaces), not `syncWithoutDetaching()` (only adds).
 
+**`select()` must come BEFORE `withCount()`.** `withCount` sets the query's select list, after which
+the column array passed to `get([...])` is silently ignored and the response widens to every column,
+timestamps included. Reversed — `withCount()` then `select([...])` — the subquery is dropped instead
+and the `*_count` field vanishes. Both failures are silent. Correct:
+`Model::select([...])->withCount('rel')->get()`.
+
 **Laravel 13's base `Controller` does NOT include `AuthorizesRequests`** — it was added manually.
 
 **A seeder keyed on a DERIVED value is keyed on the value it derives from.** `CategorySeeder`
@@ -149,6 +155,14 @@ covered elsewhere, so re-driving the form proves nothing new.
 **4. `git status` collapses NEW DIRECTORIES.** Use `git status --short -uall` or you cannot see
 what is about to be committed. Paths with square brackets need QUOTES in `git add`.
 Never `git add .`.
+
+**4a. `react-hooks/set-state-in-effect` follows a `useCallback` but not a function declared inside
+the effect.** A loader written as `useCallback` and called from an effect body is flagged; the same
+code declared inside the effect is not. Moving the setState after the first `await` is NOT enough —
+the rule traces into the callback regardless. The shape that passes, and that `tools-list.tsx`
+already uses: declare the async loader inside the effect, guard with `isMounted`, and re-run it by
+bumping a `reloadToken` state that the dependency array watches. Mutation handlers then call
+`setReloadToken(n => n + 1)` instead of the loader.
 
 **5. `eslint-disable` suppresses real bugs.** When the linter objects, ask WHAT it is hiding.
 Real case: `react-hooks/set-state-in-effect` was RIGHT. Both workarounds (eslint-disable,

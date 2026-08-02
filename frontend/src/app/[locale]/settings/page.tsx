@@ -1,4 +1,5 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import { RequireRole } from "@/components/require-role";
 import { ADMIN_ROLES } from "@/lib/roles";
 
@@ -19,17 +20,19 @@ export default async function SettingsPage({
           {t("settings.title")}
         </h1>
 
-        {/* The two sections become navigable in their own phases: categories next,
-            users after it. Nothing is linked yet because neither screen exists. */}
+        {/* Users becomes a link in its own phase; its screen does not exist yet. */}
         <div className="flex flex-col gap-4">
-          <section className="rounded-lg border border-border bg-card p-6">
+          <Link
+            href="/settings/categories"
+            className="rounded-lg border border-border bg-card p-6 hover:border-accent"
+          >
             <h2 className="text-lg font-medium text-text-primary">
-              {t("settings.categories")}
+              {t("settings.categories.title")}
             </h2>
-          </section>
+          </Link>
           <section className="rounded-lg border border-border bg-card p-6">
             <h2 className="text-lg font-medium text-text-primary">
-              {t("settings.users")}
+              {t("settings.users.title")}
             </h2>
           </section>
         </div>

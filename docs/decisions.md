@@ -900,3 +900,81 @@ entirely and `tools_count` disappears from the response.
   the existing consumers are unharmed by a field they ignore.
 - `withCount` without the explicit `select()` — rejected: it returns whole models and breaks the
   enumerated-columns contract from ADR-18.
+
+---
+
+## ADR-31: The category management screen — inline form, a slug that cannot be sent, and usage-aware deletion
+
+**Status:** Accepted
+
+**Context:** ADR-28 built the category write endpoints and ADR-30 added `tools_count`; this phase is
+the screen. ADR-18 first named "Settings → Manage categories" as a deferred idea, and ADR-19 drew the
+line that still holds: categories become editable through the UI, roles never do, because roles carry
+the `level` hierarchy authorization depends on. Two shapes had to be chosen. ADR-23 put the tool form
+on its own page because it has ten inputs, a 5000-character description and three multi-selects; a
+category has three names and a slug, so that reasoning does not carry over and the developer chose an
+inline form. The second was raised by the developer directly: the slug is immutable after creation, and
+a form that renders the field greyed out but still sends its value is a facade — the backend rejects it
+with 422, but the UI should never offer it.
+
+**Decision:** (1) One page, `/settings/categories`, guarded by `RequireRole roles={ADMIN_ROLES}`
+(ADR-29), holding the list and a single form panel that is either "new" or "edit". (2) **The slug is
+absent from the edit path at every level**, not merely disabled: `UpdateCategoryPayload` has no `slug`
+field, so `updateCategory` cannot carry one; `CategoryForm` renders the slug as **text** in edit mode
+rather than as a disabled input, so no value is collected; and the create branch is the only caller
+that passes a slug at all. A disabled input would still hold a value and invite someone to wire it up.
+(3) `toCategoryName` (`src/lib/category-name.ts`) builds the translation map and **omits** languages
+left blank rather than sending `""`, because the backend rejects a present-but-empty translation
+(ADR-28) and a missing translation is the state the frontend already handles by falling back to
+Bulgarian (ADR-27). (4) The delete button is **disabled when `tools_count > 0`**, so the impossible
+action is never offered; `window.confirm` guards the possible one, reusing the ADR-23 precedent rather
+than introducing a dialog component. `deleteCategory` still handles 422, because the count can go stale
+between load and click. (5) Counts use **ICU pluralisation**
+(`{count, plural, one {…} other {…}}`), deliberately not repeating the `tools.totalCount` bug recorded
+as known debt in ADR-19, where a plain `{count}` placeholder reads wrong for exactly one item.
+(6) `CategoryForm` receives a `key` tied to the category being edited, because it reads its initial
+values once in a `useState` initializer — the ADR-24 trap; without the remount, switching to another
+category would keep the previous one's values. (7) `settings.categories` and `settings.users` changed
+from strings to objects in both dictionaries, and `/settings` now links to the categories screen.
+
+**Consequences:**
+- **The slug rule was verified at the wire, not by eye.** The edit request body was read from the
+  network panel: `{"name":{"bg":"Преименувана тестова","en":"Test category"}}` — no `slug` key, and no
+  empty `fr`. Reading the rendered form would only have shown that the field looks read-only.
+- Verified end to end in a real browser on both locales: the list shows all five categories with counts
+  3/2/3/4/6 and **every delete button disabled** because every category is in use; creating with a
+  Cyrillic slug returns a field-level error under the slug plus a translated summary; fixing it creates
+  the category, which appears as "Не се използва" with delete **enabled** — the discriminating
+  difference; renaming re-sorts the row into its correct alphabetical position; cancelling the confirm
+  dialog issues **no** DELETE request at all; accepting it removes the row.
+- The **singular** plural branch was proven by constructing the case the seed data cannot show: a
+  throwaway category with exactly one tool rendered "Използва се от 1 инструмент" and "Used by 1 tool",
+  then both were deleted. Without it, every visible count was ≥ 2 and the `one` branch would have been
+  shipped unexecuted.
+- The English locale sorts by the English names (Code, Data, Image, Productivity, Writing) — a
+  different order from Bulgarian, which is the check that per-locale sorting is real (ADR-27).
+- Dev data was restored: the same five categories, the same slugs, the same counts, summing to the same
+  18 `category_tool` rows.
+- Console clean apart from the deliberate 422 logged by the browser during the invalid-slug test — a
+  4xx while testing validation is success, not failure (pitfalls #8).
+- `npx tsc --noEmit` and `npm run lint` clean. Dictionaries in sync at 119 keys each.
+- **`categories-admin.tsx` is 170 lines, over the 150 ceiling for components.** It was split once
+  already — `CategoryRow` came out of it — and what remains is form-state orchestration plus the list,
+  coupled through the handlers. Splitting further would prop-drill four callbacks to buy nothing, so it
+  stays and is reported rather than hidden. Roughly 35 of those lines are comments recording the two
+  traps above.
+- The English validation messages from Laravel are still shown per field (the ADR-23 debt), now
+  alongside a translated summary line.
+
+**Alternatives considered:**
+- Separate `/settings/categories/new` and `/[id]/edit` routes mirroring ADR-23/ADR-24 — rejected by the
+  developer: the reason those exist is a ten-field form, and three names plus a slug do not need a
+  screen of their own or two navigations per rename.
+- A disabled slug input in edit mode — rejected by the developer as a facade; the value would still be
+  collected and one careless change would start sending it.
+- Sending `en: ""` and letting the backend reject it — rejected: the admin would get a validation error
+  for leaving an optional field blank.
+- Patching local state after save instead of reloading — rejected: `tools_count` is computed by the
+  backend, so a local patch would show a stale count on the row just edited.
+- Letting the delete button stay enabled and explaining the failure afterwards — rejected in ADR-30;
+  that is the whole reason `tools_count` was added.

@@ -1,4 +1,13 @@
-import type { Category, Department, Difficulty, Role, RoleOption, Tool, ToolStatus } from "@/types";
+import type {
+  Category,
+  CategoryWithUsage,
+  Department,
+  Difficulty,
+  Role,
+  RoleOption,
+  Tool,
+  ToolStatus,
+} from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost/api";
 const TOKEN_KEY = "auth_token";
@@ -146,7 +155,7 @@ export async function getTools(query: ToolsQuery = {}): Promise<ToolsPage> {
   };
 }
 
-export async function getCategories(): Promise<Category[]> {
+export async function getCategories(): Promise<CategoryWithUsage[]> {
   const response = await request("/categories");
 
   if (!response.ok) {
@@ -154,6 +163,81 @@ export async function getCategories(): Promise<Category[]> {
   }
 
   return response.json();
+}
+
+/**
+ * A category name is a translation map (ADR-27). `bg` is required — it is the fallback —
+ * and the other two are omitted entirely when the admin leaves them blank: the backend
+ * rejects a present-but-empty translation, so "" must never be sent.
+ */
+export type CategoryNamePayload = { bg: string; en?: string; fr?: string };
+
+export type CreateCategoryPayload = {
+  name: CategoryNamePayload;
+  slug: string;
+};
+
+/**
+ * Deliberately has NO `slug`. The slug is immutable after creation (ADR-28) and the
+ * backend answers 422 if it is present at all, so the type removes the possibility of
+ * sending it rather than relying on a disabled input.
+ */
+export type UpdateCategoryPayload = {
+  name: CategoryNamePayload;
+};
+
+export async function createCategory(payload: CreateCategoryPayload): Promise<Category> {
+  const response = await request("/categories", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to save the category. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function updateCategory(
+  id: number,
+  payload: UpdateCategoryPayload,
+): Promise<Category> {
+  const response = await request(`/categories/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to save the category. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function deleteCategory(id: number): Promise<void> {
+  const response = await request(`/categories/${id}`, { method: "DELETE" });
+
+  // 422 means the category is still used by tools (ADR-28). The UI disables the button
+  // in that case, so reaching here means the count was stale — a concurrent edit.
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to delete the category. Please try again.");
+  }
 }
 
 export async function getRoles(): Promise<RoleOption[]> {
