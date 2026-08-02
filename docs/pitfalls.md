@@ -28,6 +28,13 @@ which one the surrounding code uses. Do not introduce a third convention.
 every authenticated request is client-side. This is why the `/tools/[id]/edit` heading lives
 in the client component, not the page.
 
+**Panel/modal state must hold an ID, not a copy of the row.** Storing the object freezes it at the
+moment the panel opened, so after a save + reload the panel renders the OLD values while the list
+beneath shows the new ones — a heading that keeps announcing the previous name. Store the id and
+`find()` it in the freshly loaded list on each render. Note the `key` for the ADR-24 remount then
+comes from the id, which is what you want: it stays stable across reloads and changes only when you
+switch rows.
+
 **`ToolPayload` has NO optional fields.** Nullables are `| null`, never `?`. Deliberate: the
 controller uses `->safe()`, so a MISSING field is not updated. Clear a documentation link and
 omit the field, and the old value silently survives. The type forces an explicit null.

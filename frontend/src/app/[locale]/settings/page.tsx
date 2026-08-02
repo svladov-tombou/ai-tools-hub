@@ -20,7 +20,6 @@ export default async function SettingsPage({
           {t("settings.title")}
         </h1>
 
-        {/* Users becomes a link in its own phase; its screen does not exist yet. */}
         <div className="flex flex-col gap-4">
           <Link
             href="/settings/categories"
@@ -30,11 +29,14 @@ export default async function SettingsPage({
               {t("settings.categories.title")}
             </h2>
           </Link>
-          <section className="rounded-lg border border-border bg-card p-6">
+          <Link
+            href="/settings/users"
+            className="rounded-lg border border-border bg-card p-6 hover:border-accent"
+          >
             <h2 className="text-lg font-medium text-text-primary">
               {t("settings.users.title")}
             </h2>
-          </section>
+          </Link>
         </div>
       </div>
     </RequireRole>

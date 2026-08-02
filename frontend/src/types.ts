@@ -39,6 +39,20 @@ export type RoleOption = {
   level: number;
 };
 
+/**
+ * A user as the admin endpoints return them. Deliberately NOT called `User`: that name is
+ * already taken in `src/lib/api.ts` by the signed-in user, whose `roles` are plain strings.
+ * Same word, two shapes — separate names (the RoleOption lesson).
+ */
+export type AdminUser = {
+  id: number;
+  name: string;
+  email: string;
+  is_active: boolean;
+  department_id: number | null;
+  roles: RoleOption[];
+};
+
 export type Difficulty = "beginner" | "intermediate" | "advanced";
 
 export type ToolStatus = "draft" | "published";

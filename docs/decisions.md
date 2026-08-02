@@ -1196,3 +1196,105 @@ verified against in the browser rather than only in Pest.
 - API Resource classes for the wire shape — rejected: the project has no Resource layer, and adding
   one is an ask-first "new kind of thing". A private method on the controller does the same job for
   one resource.
+
+---
+
+## ADR-34: The user management screen — three save blocks in one panel, a panel that holds an ID, and an owner option that is absent rather than disabled
+
+**Status:** Accepted
+
+**Context:** ADR-33 built seven endpoints; this phase is the screen, and the last part of the user
+management feature. ADR-31 set the model for a Settings screen (one page, an inline form panel, a
+list of rows) and the developer asked for the same model here. Two shapes had to be chosen that the
+categories screen never faced. First, a user has **three** independent saves — fields, roles,
+password — because ADR-33 split them into three endpoints with three different authorization rules;
+the categories screen has one form and one endpoint. Second, several controls must be visible but
+unusable depending on who is looking: a pm may not touch an owner at all, nobody may deactivate
+themselves or change their own roles, and only an owner may grant the owner role.
+
+**Decision:** (1) **The dictionary went in first, as its own step** — 35 keys under `settings.users.*`
+in both locales before a single component referenced them, because `messages/bg/common.json` is the
+type source for `t()` and the reverse order does not compile. Both files verified in sync at 154 keys.
+(2) One page `/settings/users` guarded by `RequireRole roles={ADMIN_ROLES}`, `max-w-4xl` (wider than
+categories — the rows carry more), with `/settings` finally linking to it.
+(3) **The edit panel is one card with three visually separated blocks, each with its own submit
+button — one block per endpoint.** The developer chose this over four buttons on every row, which at
+five users would put twenty buttons on one screen. Each block owns its own submitting/error/field-error
+state so one block's failure never renders under another.
+(4) **The panel holds a user ID, not a user object.** Storing the object froze a copy taken when the
+panel opened, so after saving a rename the heading kept announcing the old name while the row beneath
+already showed the new one. Deriving the user from the reloaded list by id removes the entire class of
+staleness rather than resyncing it after the fact. This was found in review, not in the browser.
+(5) **For a non-owner actor the `owner` checkbox is OMITTED from the role options, not disabled**, with
+a hint saying why — the same reasoning ADR-31 applied to the immutable category slug: a disabled input
+still holds a value and invites someone to wire it up. A pm can never legitimately grant the role, and
+can never open the panel of a user who already holds it, so the option has no honest use.
+(6) Four UX-only predicates in `src/lib/roles.ts` — `isOwnerUser`, `canManageUser`, `canEditUserRoles`,
+`canDeactivateUser` — mirroring `UserPolicy`, so the row and the panel cannot disagree about who may do
+what. Every one is commented as UX only; the guard is the backend, proven by ADR-33's tests.
+(7) `window.confirm` on deactivate only. Deactivation revokes the target's tokens and ends their
+sessions immediately, which deserves a question; activation is harmless and reversible, and asking
+about a harmless action teaches people to click through without reading.
+(8) `UpdateUserPayload.department_id` is `number | null`, never optional — omitting the key CLEARS the
+department on the backend (ADR-33), so the type forces the form to always send an explicit value. The
+same contract as `ToolPayload` (ADR-23), for the same reason.
+
+**Consequences:**
+- Nine new components plus additions to `api.ts`, `types.ts` and `roles.ts`. `AdminUser` is
+  deliberately not called `User`: that name is already the signed-in user in `api.ts`, whose `roles`
+  are plain strings rather than objects — the same-word-two-shapes trap that produced `RoleOption`
+  in ADR-19.
+- `npx tsc --noEmit` and `npm run lint` clean. Dictionaries in sync at 154 keys each.
+- **Verified in a real browser across three roles and both locales**, driving the app with a
+  curl-minted token in `localStorage` rather than the login form (pitfalls #3a). As **owner**: five
+  users ordered by name in Bulgarian collation, the deactivated seed user badged, and the owner's own
+  row with Deactivate disabled; opening their own panel shows details and password but **no roles
+  block**, replaced by the sentence explaining why. As **pm**: the owner's row has both buttons
+  disabled carrying the owner-protection hint while the pm's own row carries the *self* hint — two
+  different hints on two different rows, which is the check that discriminates; and the roles form
+  offers three options with the owner hint where the owner sees four options and no hint. As
+  **employee**: `/bg/settings/users` lands on the dashboard and the Settings link is absent from the
+  navbar.
+- **The full lifecycle was driven end to end through the UI**: creating with a 5-character password
+  returned a field-level error plus the translated summary and wrote nothing; fixing it created the
+  user with the IT department and the Employee role; that user then logged in through the API with the
+  password the admin chose; cancelling the deactivate confirm left the row untouched; accepting it
+  flipped the badge to Deactivated and the button to Activate; and the user could then no longer log
+  in. The test user was removed directly from the database afterwards — deliberately not through the
+  UI, because there is no delete and there should not be one.
+- Badge colours were checked as **computed styles**, not by eye (the ADR-14 method): active is
+  `rgb(52, 189, 149)` = the mint accent `#34BD95`, deactivated is `rgb(240, 153, 123)` = the peach
+  secondary `#F0997B`, both from the semantic tokens with no hardcoded hex.
+- The English locale renders roles, departments, badges and hints translated, while user *names* stay
+  as stored — they are data, not interface.
+- Console clean across the whole run apart from the single deliberate 422 from the short-password test
+  (pitfalls #8). No hydration warnings.
+- **Known limitation, accepted rather than hidden: the navbar keeps showing the old name after an
+  admin renames themselves**, until a reload. `auth-context` exposes no refresh function, and adding
+  one is a change to shared authentication code that does not belong in the middle of this phase. The
+  row and the panel both update immediately; only the navbar copy is stale.
+- The password form clears itself after a successful save via a version counter used as its `key` —
+  the ADR-24 remount mechanism, used here to force a reset rather than to prevent one.
+- **Two files exceed the size guideline and are reported rather than hidden:** `users-admin.tsx` at
+  264 lines (ceiling 150) and `user-create-form.tsx` at 190. The orchestrator holds four independent
+  block states plus the list lifecycle, coupled through handlers; the list was already split out into
+  `user-list.tsx`. Extracting the handlers into a custom hook would fit the ceiling, but this project
+  has no custom hooks anywhere, so introducing the first one is an ask-first "new kind of thing" and
+  was not done unilaterally. `tool-form.tsx` (289 lines) is the existing precedent for a field-heavy
+  component kept whole.
+- Dev data was restored and snapshotted: the same five users, the same names, Георги still deactivated,
+  five `role_user` rows, no orphans.
+
+**Alternatives considered:**
+- Four buttons per row (details, roles, password, deactivate), each opening its own small form —
+  rejected by the developer: fewer pixels per panel, but twenty buttons on a five-row screen.
+- Keeping the user object in panel state and resyncing it from the list after each save — rejected in
+  favour of deriving it, which cannot go stale in the first place.
+- Disabling the owner checkbox for a pm instead of omitting it — rejected per (5), the ADR-31 precedent.
+- Confirming activation as well as deactivation — rejected: a confirmation on a harmless action trains
+  people to dismiss confirmations.
+- Sorting the department dropdown by the translated label — rejected for consistency: every other
+  department control in this app (the tools filter, the tool form) renders them in backend order, and a
+  third convention costs more than the ordering gains.
+- Adding a `refresh()` to `auth-context` so the navbar tracks a self-rename — deferred, see the known
+  limitation above.

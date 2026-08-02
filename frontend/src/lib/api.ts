@@ -1,4 +1,5 @@
 import type {
+  AdminUser,
   Category,
   CategoryWithUsage,
   Department,
@@ -312,6 +313,138 @@ export async function updateTool(id: number, payload: ToolPayload): Promise<Tool
 
   if (!response.ok) {
     throw new Error("Unable to save the tool. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function getUsers(): Promise<AdminUser[]> {
+  const response = await request("/users");
+
+  if (!response.ok) {
+    throw new Error("Unable to load users. Please try again.");
+  }
+
+  return response.json();
+}
+
+export type CreateUserPayload = {
+  name: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+  role_ids: number[];
+  department_id: number | null;
+};
+
+/**
+ * No `role_ids` and no `password`: those are separate endpoints (`/roles`, `/password`),
+ * and sending them here is a 422 (`prohibited`) by design. `department_id` is
+ * required-but-nullable rather than optional: an OMITTED `department_id` on this endpoint
+ * clears the stored department, so the type forces every caller to send an explicit value
+ * — the same reasoning as `ToolPayload`.
+ */
+export type UpdateUserPayload = {
+  name: string;
+  email: string;
+  department_id: number | null;
+};
+
+export type UpdateUserRolesPayload = { role_ids: number[] };
+
+export type UpdateUserPasswordPayload = { password: string; password_confirmation: string };
+
+export async function createUser(payload: CreateUserPayload): Promise<AdminUser> {
+  const response = await request("/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to save the user. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function updateUser(id: number, payload: UpdateUserPayload): Promise<AdminUser> {
+  const response = await request(`/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to save the user. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function updateUserRoles(
+  id: number,
+  payload: UpdateUserRolesPayload,
+): Promise<AdminUser> {
+  const response = await request(`/users/${id}/roles`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to save the roles. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function updateUserPassword(
+  id: number,
+  payload: UpdateUserPasswordPayload,
+): Promise<void> {
+  const response = await request(`/users/${id}/password`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to change the password. Please try again.");
+  }
+}
+
+export async function activateUser(id: number): Promise<AdminUser> {
+  const response = await request(`/users/${id}/activate`, { method: "POST" });
+
+  if (!response.ok) {
+    throw new Error("Unable to activate the user. Please try again.");
+  }
+
+  return response.json();
+}
+
+export async function deactivateUser(id: number): Promise<AdminUser> {
+  const response = await request(`/users/${id}/deactivate`, { method: "POST" });
+
+  if (!response.ok) {
+    throw new Error("Unable to deactivate the user. Please try again.");
   }
 
   return response.json();
