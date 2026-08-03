@@ -2269,3 +2269,172 @@ only place where a user can throw somebody else's access to their account away.
 - **Guarding the exclusion with `instanceof PersonalAccessToken` alone** — rejected on measurement, not
   on taste; see the consequence above, where `Sanctum::actingAs()`'s Mockery double passes `instanceof`
   and reports `getKey()` as `false`.
+
+---
+
+## ADR-41: A delete button on the tool card — edit parity re-examined and kept, hard delete kept deliberately
+
+**Status:** Accepted
+
+**Context:** The developer asked for a way to delete a tool from the interface. Reconnaissance found the
+entire backend already in place and working, so this is a **frontend-only** phase:
+`ToolController::destroy` (`app/Http/Controllers/ToolController.php:74-81`) authorizes, hard-deletes and
+returns `response()->noContent()`; the route sits inside the `auth:sanctum` group; `ToolPolicy::delete`
+delegates to `ToolPolicy::update`. Nothing in `backend/` was changed by this phase except the addition of
+four tests (phase 3 below).
+
+Two schema facts were **verified against the live MySQL catalogue rather than read off the migrations**,
+because the migration file is a description and the database is the fact:
+`information_schema.REFERENTIAL_CONSTRAINTS` reports all six foreign keys on `category_tool`, `role_tool`
+and `department_tool` as `ON DELETE CASCADE`, and those three are the ONLY tables in the schema that
+reference `tools`. The `tools` table has no `deleted_at` column and `Tool` does not use `SoftDeletes`, so
+`$tool->delete()` is a hard delete and MySQL removes the pivot rows with it.
+
+The reconnaissance also surfaced a gap the developer chose to close in this phase: the four existing
+delete tests covered author / non-author / owner / pm, but nothing covered an unauthenticated request, a
+`manager`, an authorless tool, or the cascade itself.
+
+**Decision:**
+
+(1) **ADR-12 is re-examined and KEPT unchanged.** Deletion stays the mirror of editing — the author,
+`owner`, `pm` — because `ToolPolicy::delete()` is literally `ToolPolicy::update()`. The developer
+examined and **accepted the consequence**: an `employee` may delete their own tool *after* a `pm` has
+published it, without ever having been able to publish it themselves. Publishing and deleting answer
+different questions (who curates the catalogue vs. who owns this row), and the alternative — the author
+may delete only while the tool is a draft — was rejected as a new rule that ADR-12 did not ask for.
+
+(2) **`manager` still cannot delete a tool it did not create,** although `Tool::SEES_ALL_TOOLS_ROLES`
+includes `manager` and a manager therefore reads every draft (ADR-35). Reading everything and writing
+everything are deliberately different sets. This asymmetry was the least obvious thing in the phase and
+is now pinned by a test that asserts BOTH halves — the manager gets 200 on `show` and 403 on `destroy` —
+so the 403 cannot pass for the trivial reason that the manager could not see the tool at all.
+
+(3) **Hard delete stays hard.** No `SoftDeletes`, no `deleted_at`, no "archived" status. This is recorded
+explicitly because it is **the opposite of the decision taken for users in ADR-32**, where accounts are
+deactivated and never deleted, and the two models now behave differently on purpose: a user is a person
+with history, a tool row is a catalogue entry. Anyone reading the two ADRs together should see a choice,
+not an inconsistency.
+
+(4) **The cascade to the pivot tables is the desired behaviour, and there is no orphan check.** Deleting a
+tool takes its `category_tool`, `role_tool` and `department_tool` rows and leaves the categories, roles
+and departments themselves untouched. Note the deliberate asymmetry with ADR-28: a category still used by
+tools **cannot** be deleted (422, with the count in the message), while a tool carrying category links is
+deleted without a word. The developer confirmed this direction is intended — a tool losing its links
+destroys nothing anyone else depends on, whereas a category disappearing silently rewrites other people's
+tools.
+
+(5) **`deleteTool` in `src/lib/api.ts:363-375` has no 422 branch,** unlike `deleteCategory` which it is
+otherwise modelled on: `destroy` runs no validation, so the only failures are 401, 403, 404 and 5xx. The
+success path never calls `response.json()` — 204 carries an empty body — which is the shape `logout`,
+`deleteCategory`, `updateUserPassword` and `updateCurrentUserPassword` already use for void endpoints.
+
+(6) **The button lives ONLY on the card in `/tools`, not on the edit screen.** One entry point, on the
+screen that already owns the list and can therefore repair itself after a delete.
+
+(7) **The existing `canEdit` in `tool-card.tsx` gates both actions and was NOT extracted into
+`src/lib/roles.ts`.** Since `ToolPolicy::delete` *is* `ToolPolicy::update`, a second permission check
+would be a second thing to keep in step with one backend rule. Extraction was considered and rejected:
+both consumers sit in the same file, so a helper in `roles.ts` would move the condition further from its
+only two uses without removing anything. `roles.ts` remains the right home the moment a third consumer
+appears. Its comment now says it gates edit AND delete; the "UX only" note stays — the boundary is the
+backend policy, and a hidden button changes nothing about it.
+
+(8) **Responsibilities split: the card stays presentational, the list owns the interaction.**
+`ToolCard` renders the button and calls `onDelete(tool)`; it holds no delete state, makes no request and
+raises no dialog. `ToolsList` owns `window.confirm`, the request, `deletingId`, the two message states and
+the list repair. This is why the button could go on the card without the card learning about the API.
+
+(9) **Success removes the card locally and does not refetch;** `total` is decremented in the same step
+(floored at 0) so the `tools.totalCount` line cannot keep counting a tool that is gone. **Failure shows
+`tools.deleteError` AND refetches** through a new `reloadToken`, because a 403 or 404 means the card was
+stale and a list that keeps displaying it is lying. `deleteTool` throws one generic `Error` for every
+non-OK status, so 403, 404 and 5xx are handled identically — refetching is the right answer to all three.
+
+(10) **`sessionStorage` and the `tool_saved` key were not touched, and got no third state.** The
+create/edit success bar needs `sessionStorage` because those screens navigate to `/tools`; deletion
+happens on `/tools` with no navigation, so plain local state is enough. This also sidesteps a real trap:
+the existing bar is rendered by a **ternary** (`savedState === "updated" ? … : …`) over an untyped
+`string | null`, so a third value would have silently rendered "Инструментът е добавен." A delete message
+takes precedence over `savedState` when both are present — the delete is what just happened.
+
+(11) **The button is `disabled` while its own request is in flight** (`isDeleting={deletingId === tool.id}`),
+so a double click cannot fire two DELETEs.
+
+(12) **The dictionary went in as its OWN commit, before any code referenced the keys** — `be5f692`, four
+keys (`tools.deleteButton`, `deleteConfirm` with a `{name}` parameter, `deleteError`, `deleteSuccess`) in
+both locales, verified as valid JSON with zero key divergence.
+
+The history here was checked rather than asserted, because the first version of this entry claimed this was
+the first time the contract had been honoured and that was **wrong**. Counted with
+`git log --all -- frontend/messages/`: fifteen commits have touched the dictionary. Thirteen folded it into
+the implementation commit — including ADR-39, whose own text claims the key was "added first as its own
+step" while `034f85f` shows it landing together with the two components it serves. **Two kept it separate:
+`b1ecbbd`, the ADR-40 dictionary phase, was the first, and this phase is the second.** So the honest
+statement is that `CLAUDE.md` has required this since ADR-25, was circumvented thirteen times, and has now
+been followed twice in a row — this being the first time on the tools side. Recorded this way on purpose:
+an append-only file cannot be corrected later, so a flattering version of it would have been permanent.
+
+Key names follow the `settings.categories` precedent (`deleteButton`, `deleteConfirm`, `deleteError`),
+which also settles that destructive labels belong to their own section rather than the shared `buttons`
+block.
+
+(13) **Phase 3 added four tests to `tests/Feature/ToolApiTest.php`,** each chosen so that it fails if the
+behaviour is wrong: an unauthenticated DELETE returns 401 *and the tool survives*; a `manager` gets 200 on
+`show` and 403 on `destroy` *and the tool survives*; an authorless tool refuses a roleless user and
+accepts `owner` and `pm` (on two separate tools, since a successful delete cannot be repeated); and the
+cascade test asserts each pivot table holds exactly **1** row before the delete and **0** after, while the
+category, role and department rows themselves remain. The "before" half is not decoration — without it
+the test would still pass if the fixture had attached nothing at all.
+
+**Consequences and measurements:**
+
+- Backend untouched by phases 1 and 2. Full suite green at that point: **162 tests, 425 assertions.**
+  `npx tsc --noEmit`, `npm run lint` and `npm run build` all clean, 20 static pages.
+- **Verified in a real browser** as `employee`, plus a manual acceptance pass by the developer:
+  the confirm dialog interpolates the name (`Да се изтрие ли инструментът „…“?`); declining keeps the
+  tool; accepting removes the card locally, decrements the count and shows `tools.deleteSuccess`; the two
+  action buttons appear on the employee's own tools and on none of the seven tools they did not create.
+- **The cascade was observed end to end, not inferred:** a fixture tool with one row in each pivot table
+  went to 0 / 0 / 0 on delete, while the category, department and role counts stayed at 5 / 12 / 4.
+- **The stale-card path was staged deliberately:** a tool was deleted through the API behind the UI's
+  back, then its card clicked. The result was `tools.deleteError` **and** a refetch that dropped the
+  stale card and corrected the total — the branch in (9) doing exactly what it exists for.
+- **The in-flight guard was measured, not assumed:** with the DELETE response artificially delayed, the
+  button reported `disabled = true`, `opacity: 0.5` and `cursor: not-allowed` mid-request. That also
+  proves the `disabled:` Tailwind classes are real class names, which neither `tsc` nor `lint` can check.
+- `tool-card.tsx` and `tools-list.tsx` both land at **155 lines, five over the 150 ceiling** for
+  components. Accepted deliberately rather than overlooked: the only available split is lifting the
+  message bar into a component that would move the same ternary somewhere else, which is less clear, not
+  more. Both files are queued for the structural review already holding `users-admin.tsx` (264) and
+  `tool-form.tsx` (308) — a separate phase, not smuggled into this one.
+- **One real incident, recorded because it cost a record.** Verifying through the MCP browser driver
+  deleted a tool that was not the target: `element.click()` was used as a workaround for a driver whose
+  clicks never reach the React handlers, it matched the FIRST "Изтрий" button on the page rather than the
+  one in the intended card, and `window.confirm` had been stubbed to accept. A third party's draft was
+  destroyed. It was restored in full — every field and all nine pivot links — from the accessibility
+  snapshot taken before the delete, with a new id. The lesson, and the rule that destructive flows are
+  proved by Pest on an isolated database plus one human pass, is in `docs/pitfalls.md` (3d, 3e).
+
+**Alternatives considered:**
+
+- **Letting the author delete only a draft, leaving published tools to owner/pm** — rejected per (1) by
+  the developer; it is a new rule, and ADR-12 already answered the question.
+- **Giving `manager` delete rights to match its read rights** — rejected per (2); the asymmetry is the
+  decision, not an oversight.
+- **Soft delete, or an "archived" status, mirroring ADR-32's treatment of users** — rejected per (3).
+- **Blocking deletion of a tool whose links are the last ones on some category,** mirroring ADR-28 in the
+  other direction — rejected per (4); nothing depends on a tool's links the way tools depend on a category.
+- **Extracting `canEditTool` / `canDeleteTool` into `src/lib/roles.ts`** — rejected per (7).
+- **Putting the button on the edit screen as well** — rejected per (6): a second entry point on a screen
+  that would then have to navigate away and explain itself.
+- **A third `tool_saved` state (`"deleted"`)** — rejected per (10); it would have needed the untyped
+  ternary rewritten to earn nothing, since deletion never navigates.
+- **A custom confirmation dialog component** — rejected: the project has no modal primitive, and
+  `window.confirm` is what `categories-admin.tsx` and `tool-form.tsx` already use. Introducing one would
+  be a new kind of thing under the `CLAUDE.md` ask-first list.
+- **Refetching the whole list on success** (what `deleteCategory`'s caller does) — rejected per (9): the
+  client already knows exactly which row vanished, and `tools_count`-style server-computed data, which is
+  what forces the refetch on the categories screen, has no equivalent here.
+- **A status-carrying error type so the UI could distinguish 403 from 404** — rejected: both mean the same
+  thing to this screen (the card is stale, refetch), and a new error class is a new kind of thing for no
+  behavioural difference.

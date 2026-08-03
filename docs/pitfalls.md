@@ -54,7 +54,14 @@ Filtering wants names: category → slug, department → slug, role → NAME. Mi
 produces empty results with no error.
 
 **Pivot tables:** `category_tool`, `role_tool`, `department_tool` — alphabetical, singular,
-no timestamps.
+no timestamps. The reversed form (`tool_category`, `tool_role`, `tool_department`) has now been
+written twice in prose, and NOTHING in the project catches it: Laravel assembles the pivot name
+itself from the two model names, so the relations keep working, `tsc` never sees a table name and
+the suite stays green. The wrong name only bites where a table is typed by hand — a raw
+`DB::table('tool_category')`, a migration, a manual query. Order the two model names alphabetically
+before typing one, and confirm a live FK against
+`information_schema.REFERENTIAL_CONSTRAINTS` rather than against the migration file when the
+delete behaviour matters (ADR-41).
 
 **Seeder order in `DatabaseSeeder` is a dependency declaration**, not a preference:
 RoleSeeder → UserSeeder → CategorySeeder → DepartmentSeeder → ToolSeeder.
@@ -198,6 +205,27 @@ and the check still said the text was on the page; the single match was the seri
 Use `document.body.innerText`, which returns only what is visible, or narrow the query to the element
 you actually mean (`card.querySelector(...)`). The same trap applies to any string that lives in
 `messages/*/common.json` — which is every user-facing string in this project.
+
+**3d. On this machine the MCP browser driver's clicks never reach React's handlers.** `browser_click`
+reports full success — element visible, enabled, stable, "click action done", no error — and the handler
+simply does not run: no state change, no `/api/` request, and a `window.confirm` stubbed to record its
+calls is never called. `element.click()` from `browser_evaluate` fires the same handler normally, which is
+how the difference was isolated. **The app is innocent and this was checked from both sides:** the
+developer confirmed the same form works by hand in a real browser. This is 3a's failure mode with 3a's fix
+removed — a fresh reload does not help, so "it landed before hydration" is not the explanation. Symptom to
+recognise: text fields accept `fill` (raw DOM values stick, because nothing re-renders to overwrite them)
+while every button and checkbox on the page does nothing.
+
+**3e. Do NOT prove a destructive flow through browser automation.** Two of the driver's properties combine
+badly. `window.confirm` is swallowed, so it has to be stubbed to `true` — which removes the only guard the
+flow has. And `element.click()`, the 3d workaround, takes the FIRST matching element on the PAGE, not the
+one in the row you meant. Together they deleted a record belonging to someone else: the stub said yes and
+the click landed on a different card's button. It was recoverable only because an accessibility snapshot
+taken minutes earlier still held every field and every relation. A destructive endpoint is proved by
+**Pest against an isolated database**, where `RefreshDatabase` makes a wrong target harmless, **plus one
+manual pass by a human**. If a browser check is genuinely needed, scope the selector to the row
+(`card.querySelector(...)` — never `document.querySelectorAll(...)[0]`) and act only on a record created
+for that purpose.
 
 **4. `git status` collapses NEW DIRECTORIES.** Use `git status --short -uall` or you cannot see
 what is about to be committed. Paths with square brackets need QUOTES in `git add`.
