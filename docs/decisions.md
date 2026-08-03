@@ -1298,3 +1298,182 @@ same contract as `ToolPayload` (ADR-23), for the same reason.
   third convention costs more than the ordering gains.
 - Adding a `refresh()` to `auth-context` so the navbar tracks a self-rename — deferred, see the known
   limitation above.
+
+---
+
+## ADR-35: Draft visibility and publishing rights — manager reads drafts, only owner and pm publish (partially supersedes ADR-11 and ADR-12)
+
+**Status:** Accepted
+
+**Note on order:** this ADR is written BEFORE the code, unlike every ADR above it. The developer
+asked for the decision to be recorded and reviewed first, because it revises two accepted ADRs and
+touches authorization. Implementation follows as two phases (backend, then frontend), each with its
+own commit; the verification notes this file usually carries will be appended to those phases'
+ADRs, not retrofitted here.
+
+**Context:** ADR-11 gave `tools` a `status` column (`draft`/`published`, default `published`) and
+called it "a cheap hook for later moderation" to be activated on Day 9. Day 9 never came, and
+reconnaissance established that the hook was never wired to anything: `Tool::scopeFilter`
+(`app/Models/Tool.php:35`) has clauses for `search`, `category`, `role` and `department` and none for
+`status` or `created_by` — it does not even receive the user; `ToolController@index` paginates
+whatever the scope returns; `ToolController@show` calls **no `authorize()` at all**, so any
+authenticated user can fetch any draft by id; `ToolPolicy::viewAny`/`view` are bare `return true`;
+`status` is in the model's `#[Fillable]` and both Form Requests validate it as `in:draft,published`
+with no role condition; `ToolPolicy::update` is the only gate on writing, and a policy method
+receives no payload, so it cannot distinguish "rename this tool" from "publish this tool". Verified
+against the live API: signed in as `petar@employee.local` (employee), `GET /api/tools` returned all
+10 tools including two drafts authored by the owner, and `GET /api/tools/1` on a foreign draft
+returned 200. There are zero tests covering status behaviour or draft visibility.
+
+The developer settled the product rules. Drafts are unfinished work that needs review before the
+company sees it, and publishing is an editorial act over the shared catalog — the two are different
+acts and get different rights.
+
+**Decision:**
+
+(1) **Visibility, by role.** `owner`, `pm` and `manager` see every tool, including every draft.
+`employee` sees all `published` tools plus their own drafts (`created_by == user->id`) and no other
+drafts. Tools with a null `created_by` are drafts nobody authored and are therefore visible only to
+the first three roles — the same treatment ADR-12 gave them for writes.
+
+(2) **The rule applies to `index` AND `show`.** `show`'s missing authorization is a hole, not a
+shortcut: closing it in `index` alone would leave `/api/tools/1` as an unguarded read of every
+draft in the system. `ToolPolicy::view` gets the real condition and `ToolController@show` gets the
+`$this->authorize('view', $tool)` call it never had.
+
+(3) **`index` narrows in the QUERY, not after fetching.** A new `Tool::scopeVisibleTo(Builder,
+User)` is applied before `scopeFilter`. Filtering a fetched page in PHP would make `total`,
+`last_page` and the page size lie — a 15-row page rendering 12 rows silently tells the employee that
+three tools exist which they may not see, and the pagination metadata that ADR-19 deliberately
+carried from day one would become wrong. `scopeFilter` is left untouched: it expresses the user's
+search, this expresses their identity, and merging the two would let a request parameter influence
+what the identity rule returns.
+
+(4) **The narrowing is derived from the token, never from a request parameter.** No `?status=` is
+added to `GET /api/tools` for this purpose and `getTools` in `src/lib/api.ts` gains no `status`
+argument. A client-supplied filter is one the client can omit.
+
+(5) **Publishing: only `owner` and `pm` may set `status` to `published`, ever.** `employee` and
+`manager` create drafts only and can never move a tool to `published` — **including a tool they
+authored themselves.** Authorship grants editing (ADR-12, unchanged); it does not grant publication.
+
+(6) **The status rule lives in the Form Requests' `authorize()`, not in `ToolPolicy::update`.** A
+policy ability receives the model and the user but not the payload, so it structurally cannot see
+that `status` is the field being changed. `StoreToolRequest::authorize()` and
+`UpdateToolRequest::authorize()` — both currently bare `return true` — take the check, which is the
+ADR-28 precedent and buys the same thing it bought there: `authorize()` runs BEFORE validation, so
+the answer cannot depend on what else is in the request. A named `ToolPolicy::publish(User)` ability
+holds the actual role test so the rule has one home and the frontend has one thing to mirror.
+
+(7) **Absent status is forced to `draft` for `employee` and `manager`; an explicit
+`status: published` from them is 403.** The form will not offer them the field (point 8), so the
+normal path sends nothing and gets a draft. A request that explicitly asks to publish is refused
+rather than silently downgraded: coercing it would return `201` to a caller who asked for publication
+and believes they got it. For `owner` and `pm` an absent status keeps falling through to the column
+default `published` from ADR-11, which is exactly the behaviour they should have.
+
+(8) **No migration.** The database default stays `published`. Because non-admins never reach the
+default (point 7 forces their value in the application layer) and admins should get it, the column
+is already correct. ADR-11's promise that moderation could be activated "without a migration" holds
+literally.
+
+(9) **The status select is OMITTED from the form for `employee` and `manager`, not disabled** — the
+ADR-31 and ADR-34(5) precedent: a disabled input still holds a value and invites someone to wire it
+up, and there is no honest use for this one. `owner` and `pm` keep the two-option select.
+
+(10) **Explicit role names, not `level`.** The see-everything set is
+`hasRole('owner') || hasRole('pm') || hasRole('manager')` and the publish set is
+`hasRole('owner') || hasRole('pm')`, mirroring ToolPolicy (ADR-12), CategoryPolicy (ADR-28) and
+UserPolicy (ADR-33). `User::hasAtLeastLevel()` would express "level >= 40" more briefly and stays
+unused on purpose: every authorization rule in this project reads as a list of role names, and one
+rule written the other way is worse than the repetition.
+
+(11) **Refusing a hidden draft returns 403**, the Laravel default from `authorize()`, not a 404
+disguise. This is an internal catalog behind a login where the existence of an unfinished entry is
+not sensitive, and a 404 that means 403 misleads the next person to debug it.
+
+**What this changes and what it leaves standing:**
+
+- **ADR-11 is partially superseded.** Superseded: "Read access to the catalog is universal" and
+  "role-based restrictions, if any, will apply only to write/moderate actions" — reads are now scoped
+  by identity for `employee`. Still standing: the whole table shape, the `draft`/`published` enum,
+  the `published` column default, `created_by` as the audit trail, both pivots, and roles-on-a-tool
+  as descriptive tags rather than an access filter. The `role_tool` pivot still has nothing to do
+  with who may read a tool; this ADR uses the user's OWN roles, which is a different relation.
+- **ADR-12 is partially superseded.** Superseded: point (1), "Read (index, show): any authenticated
+  user, all tools." Also narrowed in substance though not in text: "Create: any authenticated user"
+  remains true — anyone may still create a tool — but a non-admin's tool now necessarily starts as a
+  draft. Still standing, unchanged: edit/delete belongs to the author or to `owner`/`pm`; tools with
+  a null `created_by` are writable only by `owner`/`pm`; checks use role names rather than levels;
+  and the principle that the frontend's role checks are UX only.
+- **ADR-20's parenthesis is now answered.** It recorded that narrowing the list to "I only see mine"
+  "would be a ToolPolicy change, a separate decision, not requested." This is that decision, and it
+  is deliberately NOT "only mine": published tools stay universally readable, which is the catalog's
+  entire purpose.
+
+**Why manager sees drafts but cannot publish.** These are two different acts. Reading a draft is
+taking part in preparing it — a manager is who an employee asks to look at an entry before it goes
+out, and a reviewer who cannot open the thing under review is not a reviewer. Publishing decides
+what the whole company sees in a shared catalog, which ADR-12 already assigned to `owner` and `pm`
+as its editors. Granting the manager sight without granting them the button is the point, not an
+oversight: it keeps one editorial voice over the catalog while letting review happen close to the
+work. It also keeps the manager's WRITE rights exactly equal to an employee's — the only difference
+between the two roles in this feature is what they can see — so nothing here turns `manager` into a
+half-administrator, and `ADMIN_ROLES` keeps meaning the pair it has always meant.
+
+**Why an employee sees their own drafts but not other people's.** An employee must be able to find
+and finish their own unfinished entry; hiding it would make `draft` unusable for the only people who
+routinely produce one, and their work would vanish from the list the moment they saved it. Other
+people's drafts are a different thing entirely — unreviewed, possibly wrong information presented in
+a catalog whose value is that what it contains has been vetted.
+
+**Consequences:**
+
+- Two policy abilities gain real bodies (`ToolPolicy::view`, plus a new `publish`), `viewAny` stays
+  `true` because the scope, not the ability, does the narrowing for a list.
+- The frontend needs a second role grouping beside `ADMIN_ROLES` in `src/lib/roles.ts` — the
+  see-everything trio — plus a UX-only `canPublish` predicate. Both are UX only, as everything in
+  that file is; the guarantee is the backend.
+- `tool-card.tsx`'s draft badge (ADR-19 point 11) becomes meaningful rather than merely honest: it
+  now marks something not everyone can see.
+- The tests must discriminate, per the lesson recorded repeatedly in this file: an employee seeing
+  9 of 10 tools where a manager sees 10 (counts that differ), an employee's own draft present while
+  a foreign draft is absent from the same response, `GET /tools/{foreign draft}` as 403 where the
+  same id is 200 for a manager, an employee's `PUT {status: published}` on their OWN tool as 403 —
+  the case that would pass under a naive "authors may edit their tools" reading — and a non-admin
+  `POST` without a status landing as `draft` while an `owner`'s lands as `published`.
+- Pagination totals stay truthful for every role, which is the whole reason for point (3).
+- Seed data already exercises this: three drafts across two authors (owner's ChatGPT and Cursor,
+  an employee's own), so the difference between roles is visible in the dev database without
+  arranging anything.
+
+**Alternatives considered:**
+
+- **Employee sees only published tools, including not their own drafts** — rejected: their own
+  saved work would disappear from the list, making the draft state unusable for exactly the people
+  who produce drafts.
+- **Employee sees only tools they created** — rejected, and it was never the proposal: a catalog
+  whose readers each see a private slice is not a shared catalog. ADR-20 flagged this shape as a
+  possible future direction; it is explicitly not the direction taken.
+- **Manager may publish** — rejected: it would put three roles in editorial control of what the
+  company sees and would collapse the distinction between reviewing work and deciding the catalog.
+- **Status open at creation, frozen at update** — the variant where an `employee` (and a `manager`)
+  chooses the status when creating a tool but may never move an existing one from `draft` to
+  `published`: access to the field at creation, only the transition forbidden. Rejected in favour of
+  the variant adopted in points (5) and (7), because the adopted one has no middle cases: one rule,
+  "employee/manager are always draft", instead of "allowed at creation, forbidden on change".
+- **`level >= 40` instead of naming the three roles** — rejected per point (10); consistency with
+  every other policy in the project beats brevity in one of them.
+- **Putting the status rule in `ToolPolicy::update`** — rejected because it cannot work: the method
+  never sees the payload. A policy that silently cannot enforce the rule it appears to own is worse
+  than no policy.
+- **Silently coercing a non-admin's `status: published` to `draft`** — rejected per point (7): the
+  API would answer `201` to a request it did not honour.
+- **Filtering the fetched page in PHP instead of in the query** — rejected per point (3); it breaks
+  the pagination contract.
+- **A `?status=` parameter so the client asks for what it should see** — rejected per point (4);
+  visibility derived from a parameter is visibility a caller can decline.
+- **404 instead of 403 for a hidden draft** — rejected per point (11) for an internal, behind-login
+  catalog.
+- **Changing the column default to `draft`** — rejected as unnecessary per point (8), and it would
+  have been an ask-first schema change for no gain: `owner` and `pm` want the current default.
