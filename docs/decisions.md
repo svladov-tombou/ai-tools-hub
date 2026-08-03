@@ -2161,15 +2161,50 @@ only place where a user can throw somebody else's access to their account away.
   `src/lib/format-roles.ts` is pre-existing and already used by `dashboard-greeting.tsx` and
   `user-menu.tsx`, so the risk is not new to this screen — but the case is untested on it.
 
+**Measurements from the password-form phase (point 7):**
+
+- **The three inputs are label-linked and their attributes are RENDERED, checked in the DOM** rather
+  than in the source: every `label[for]` resolves to a real `id`, `autocomplete` is `current-password`
+  on the first field and `new-password` on the other two, and `minlength="8"` is present on the new
+  password and its confirmation while **absent on the current password** — deliberate, and the
+  component carries the reason (it is matched against what is stored, so a browser-side minimum would
+  block a correct value from anyone whose password predates the rule). `compareDocumentPosition`
+  confirms the form follows the `<dl>` holding the identity data.
+- **A wrong current password produces BOTH lines at once**, which is the point of the two-layer
+  mapping: under the field, `"The password is incorrect."` — verbatim from Laravel, in English, in both
+  locales, which is Carried-forward point 2 seen live rather than reasoned about — and at form level
+  the Bulgarian `profile.password.validationFailed`. The fields are **not** cleared on failure.
+- **A mismatched confirmation renders `"The password field confirmation does not match."` under the
+  NEW password field**, not under the confirmation, because Laravel returns the error keyed on
+  `password`. The form shows each message wherever the API says it belongs, which is the whole reason
+  `errorKey` is the backend's field name.
+- **Success** renders `profile.password.success` including the sentence about other sessions being
+  signed out, and all three inputs are empty afterwards (asserted as `value === ""`, not by eye).
+- **Point (11) verified ON THE REAL PATH, not with hand-made tokens.** `petar` held **9 tokens** before
+  the change and **1** after it, and the survivor is **id=70 — exactly the token in the browser's
+  `localStorage`**, not merely "one row left". `/bg/tools` loaded normally immediately after the change
+  (real tool cards, the user still named in the navbar), so the current session does not fall while
+  eight foreign ones did.
+- **`/en/profile`**: heading, all three labels and the button are English, and **0 Bulgarian strings**
+  appear in the visible text (11 checked by name, covering both the form and the identity rows).
+- **Console: 0 application errors.** The only two entries are the browser logging the HTTP status of
+  the two deliberate 422s (pitfalls #8) — not exceptions.
+- **Restored through the application, not the database:** the password was changed back through the
+  same form, then logout and login were driven **through the UI** — `password` works, `petar-nova-1`
+  does not (both confirmed against the stored hash). Note for the record: the login form went through
+  the UI without the flakiness pitfalls #3a describes; it did not appear this time.
+
 **Carried forward, NOT decided here (the project keeps no separate backlog file):**
 
-1. **Tokens accumulate and never expire.** The dev database holds **35 rows in
-   `personal_access_tokens` for 4 users**, every one with `expires_at = null`; `config/sanctum.php:53`
-   sets `'expiration' => null`; `logout` deletes only the current token (`AuthController:42`); and
-   ADR-32 deliberately declined a per-request check. Point (11) gives a user one way to clear their own
-   old tokens, which is not the same thing as expiry. Whether tokens should get a lifetime, and whether
-   old rows should be pruned, is its own decision — a security rule and a data-retention rule at once —
-   and is out of scope for `/profile`.
+1. **Tokens accumulate and never expire, and this phase put a real number on it.** The dev database
+   holds **35 rows in `personal_access_tokens` for 4 users**, every one with `expires_at = null`;
+   `config/sanctum.php:53` sets `'expiration' => null`; `logout` deletes only the current token
+   (`AuthController:42`); and ADR-32 deliberately declined a per-request check. The password phase
+   measured the effect on one account: **`petar` alone was holding 9 tokens** before a single password
+   change swept eight of them, so the accumulation is observed, not theoretical. Point (11) gives a
+   user one way to clear their own old tokens, which is not the same thing as expiry. Whether tokens
+   should get a lifetime, and whether old rows should be pruned, is its own decision — a security rule
+   and a data-retention rule at once — and is out of scope for `/profile`.
 2. **Laravel's validation messages are still English, and this screen raises the priority of that
    debt.** It was already recorded (`docs/decisions.md:344`, "Backend localisation is deferred") but it
    changed audience here: until now it affected ADMIN screens only — `settings/users`, categories,
@@ -2188,6 +2223,14 @@ only place where a user can throw somebody else's access to their account away.
    `PLACEHOLDER_USER` since ADR-34 replaced the placeholder with real auth, which is why adding a
    required field to the `User` type broke nothing. Restoring the two rows and deleting the file are
    each their own small decision, not this phase's.
+4. **`autoComplete` exists nowhere else in `src/` — 0 occurrences — and this form introduces it.**
+   `profile-password-form.tsx` carries `current-password` on the first field and `new-password` on the
+   other two, because it is the only form in the project with THREE password inputs side by side,
+   which is exactly the situation where a password manager fills the wrong one. The other password
+   fields (the two in `settings/users` and the login form) deliberately stay without it for now:
+   giving them the attribute later is pure accumulation, not a collision, so nothing has to be
+   unpicked — unlike the per-field error messages, where a one-off patch on this screen WOULD have to
+   be unpicked when the systemic fix lands (point 2).
 
 **Alternatives considered:**
 

@@ -1,6 +1,7 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
 import { RequireAuth } from "@/components/require-auth";
 import { ProfileView } from "@/components/profile-view";
+import { ProfilePasswordForm } from "@/components/profile-password-form";
 
 export default async function ProfilePage({
   params,
@@ -19,6 +20,7 @@ export default async function ProfilePage({
           {t("profile.title")}
         </h1>
         <ProfileView />
+        <ProfilePasswordForm />
       </div>
     </RequireAuth>
   );
