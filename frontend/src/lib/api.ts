@@ -25,6 +25,11 @@ export type User = {
   name: string;
   email: string;
   roles: Role[];
+  // `/api/user` has always sent this; the normalizer used to drop it, which is why
+  // ADR-40(6) calls adding it a gap in normalization rather than an API change. It is
+  // REQUIRED, not optional: `normalizeUser` below is the only place in the project where a
+  // `User` is constructed, so no call site has to be updated to carry it.
+  department_id: number | null;
 };
 
 type RawUser = {
@@ -32,6 +37,7 @@ type RawUser = {
   name: string;
   email: string;
   roles: Array<{ name: string }>;
+  department_id: number | null;
 };
 
 function normalizeUser(raw: RawUser): User {
@@ -40,6 +46,7 @@ function normalizeUser(raw: RawUser): User {
     name: raw.name,
     email: raw.email,
     roles: raw.roles.map((r) => r.name) as Role[],
+    department_id: raw.department_id,
   };
 }
 
@@ -108,6 +115,39 @@ export async function getCurrentUser(): Promise<User | null> {
   if (!response.ok) return null;
 
   return normalizeUser(await response.json());
+}
+
+export type UpdateCurrentUserPasswordPayload = {
+  current_password: string;
+  password: string;
+  password_confirmation: string;
+};
+
+/**
+ * Self-service password change (ADR-40(1)): `PUT /user/password`, with no id in the path
+ * because the target is the token's own user. Deliberately NOT `updateUserPassword`, which
+ * is the owner/pm-only admin reset, takes a target id and sends no current password.
+ */
+export async function updateCurrentUserPassword(
+  payload: UpdateCurrentUserPasswordPayload,
+): Promise<void> {
+  const response = await request("/user/password", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+  // A wrong current password arrives here as a 422 on `current_password`, the same channel
+  // every other form uses for field errors.
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  // Success is 204 with an EMPTY body, so nothing is parsed on this path — the shape
+  // `logout`, `deleteCategory` and `updateUserPassword` already use for void endpoints.
+  if (!response.ok) {
+    throw new Error("Unable to change the password. Please try again.");
+  }
 }
 
 export type ToolsPage = {

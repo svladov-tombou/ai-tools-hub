@@ -2132,6 +2132,35 @@ only place where a user can throw somebody else's access to their account away.
   ids, not counts: one row survived, and it was the OTHER token. This is the measurement that earns
   line 145 its place, because a bare counter is green under an exactly inverted policy.
 
+**Measurements from the read-only page phase (points 6, 9 and 10):**
+
+- **Both routes answer 200 and the navbar button no longer 404s.** `/bg/profile` and `/en/profile`
+  return 200, and the `Профил` link (`src/lib/nav-links.ts:18`) reaches the page through client-side
+  navigation. The four rows render, and the page carries **0 `input`, `select` or `textarea`
+  elements** — point (9) is measured rather than merely declared.
+- **`t(\`departments.${slug}\`)` verified BILINGUALLY, with the most discriminating department** (slug
+  `tender`): `/bg` renders "Обществени поръчки" and `/en` renders "Public Procurement" — two entirely
+  different strings, neither of which resembles the slug or the id. The **absence** of the three things
+  a broken chain would print was asserted as well, in the visible text of both locales: the slug
+  itself, an unresolved `departments.` key, and the numeric id. The check required a temporary dev-data
+  change made THROUGH THE UI (a department on `ivan`, then back), which is safe because it is
+  two-way: `user-details-form.tsx:94` carries an empty "no department" option and `UpdateUserRequest`
+  validates `department_id` as `nullable`. The data was restored and re-confirmed in the database —
+  `department_id` is NULL for all five seeded users.
+- **The loading state was measured with a `MutationObserver`, not described.** The department row's
+  value sequence on mount is `""` → "Без отдел": `profile.noDepartment` does **not** flash before the
+  department list arrives. A failed fetch leaves the row blank — honest but permanent, and with no
+  error string, deliberately, so the screen never asserts "no department" about a user who has one.
+- **pitfalls #3c confirmed live.** On `/bg`, `document.body.textContent` contains `Profile`, `Name` and
+  `Department` — the dictionary serialised into the RSC payload — while `innerText` contains none of
+  them. A `textContent` check on this screen would have been a false positive.
+- Console: **0 errors, 0 warnings** across the whole run.
+- **NOT verified, recorded rather than passed over: multi-role rendering through `Intl.ListFormat`**
+  with the Bulgarian conjunction. No seeded user holds two roles, and an owner cannot change their own
+  roles (`UserPolicy::updateRoles`), so exercising it needs a second administrator or a seeder change.
+  `src/lib/format-roles.ts` is pre-existing and already used by `dashboard-greeting.tsx` and
+  `user-menu.tsx`, so the risk is not new to this screen — but the case is untested on it.
+
 **Carried forward, NOT decided here (the project keeps no separate backlog file):**
 
 1. **Tokens accumulate and never expire.** The dev database holds **35 rows in
@@ -2151,6 +2180,14 @@ only place where a user can throw somebody else's access to their account away.
    form in the project that second-guesses the API's field errors, and would create a special case to
    unpick on the day the systemic fix lands. `profile.password.validationFailed` covers the
    form-level line, which is the layer this project does own (`users-admin.tsx:94-103`).
+3. **Dev-data drift, noticed during this phase's verification and deliberately left alone.**
+   `georgi@inactive.local` reports `is_active = true` although ADR-33(8) seeds him deactivated, and a
+   leftover user `test@employee.local` (id 7, `department_id = 10`) exists — created through the API
+   during an earlier phase's verification, not by a seeder. Both predate this phase and neither was
+   touched. Separately, `frontend/src/lib/placeholder-user.ts` is a **dead file**: nothing has imported
+   `PLACEHOLDER_USER` since ADR-34 replaced the placeholder with real auth, which is why adding a
+   required field to the `User` type broke nothing. Restoring the two rows and deleting the file are
+   each their own small decision, not this phase's.
 
 **Alternatives considered:**
 
