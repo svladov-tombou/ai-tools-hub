@@ -7,11 +7,20 @@ import { localizedName } from "@/lib/localized-name";
 import { ADMIN_ROLES, hasAnyRole } from "@/lib/roles";
 import type { Tool } from "@/types";
 
-export function ToolCard({ tool }: { tool: Tool }) {
+export function ToolCard({
+  tool,
+  onDelete,
+  isDeleting,
+}: {
+  tool: Tool;
+  onDelete: (tool: Tool) => void;
+  isDeleting: boolean;
+}) {
   const t = useTranslations("common");
   const locale = useLocale();
   const { user } = useAuth();
-  // Mirrors ToolPolicy::update — author, or an administrator. UX only.
+  // Gates both edit and delete: ToolPolicy::delete is literally ToolPolicy::update —
+  // author, or an administrator. UX only; the real boundary is the backend policy.
   const canEdit = Boolean(
     user && (tool.created_by === user.id || hasAnyRole(user, ADMIN_ROLES)),
   );
@@ -27,12 +36,22 @@ export function ToolCard({ tool }: { tool: Tool }) {
             </span>
           )}
           {canEdit && (
-            <Link
-              href={`/tools/${tool.id}/edit`}
-              className="rounded-md border border-border px-2 py-0.5 text-xs text-text-primary hover:underline"
-            >
-              {t("tools.editButton")}
-            </Link>
+            <>
+              <Link
+                href={`/tools/${tool.id}/edit`}
+                className="rounded-md border border-border px-2 py-0.5 text-xs text-text-primary hover:underline"
+              >
+                {t("tools.editButton")}
+              </Link>
+              <button
+                type="button"
+                onClick={() => onDelete(tool)}
+                disabled={isDeleting}
+                className="rounded-md border border-border px-2 py-0.5 text-xs text-error hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t("tools.deleteButton")}
+              </button>
+            </>
           )}
         </div>
       </div>

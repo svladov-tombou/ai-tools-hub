@@ -360,6 +360,20 @@ export async function updateTool(id: number, payload: ToolPayload): Promise<Tool
   return response.json();
 }
 
+/**
+ * Success is 204 with an EMPTY body, so nothing is parsed on this path — the same shape
+ * `logout`, `deleteCategory` and `updateCurrentUserPassword` already use for void endpoints.
+ * Unlike `deleteCategory`, there is no 422 branch: `ToolController::destroy` runs no
+ * validation, so the only failure statuses are 401, 403, 404 and 5xx.
+ */
+export async function deleteTool(id: number): Promise<void> {
+  const response = await request(`/tools/${id}`, { method: "DELETE" });
+
+  if (!response.ok) {
+    throw new Error("Unable to delete the tool. Please try again.");
+  }
+}
+
 export async function getUsers(): Promise<AdminUser[]> {
   const response = await request("/users");
 
