@@ -173,6 +173,8 @@
         "draft": "Draft",
         "published": "Published"
       },
+      "statusHintCreate": "The tool is saved as a draft. The catalog administrators publish it.",
+      "statusHintEdit": "The tool's status is not changed here. Publishing is done by the catalog administrators.",
       "optional": "(optional)",
       "categoriesHeading": "Categories",
       "rolesHeading": "Roles",

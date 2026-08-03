@@ -266,7 +266,9 @@ export type ToolPayload = {
   documentation_url: string | null;
   video_url: string | null;
   difficulty: Difficulty | null;
-  status: ToolStatus;
+  // Optional because a non-publisher omits it entirely (ADR-35): the backend forces a draft
+  // on create and leaves the stored status alone on update.
+  status?: ToolStatus;
   category_ids: number[];
   role_ids: number[];
   department_ids: number[];

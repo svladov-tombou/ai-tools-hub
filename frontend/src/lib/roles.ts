@@ -10,8 +10,23 @@ import type { AdminUser, Role } from "@/types";
  */
 export const ADMIN_ROLES: readonly Role[] = ["owner", "pm"];
 
+/**
+ * The roles that may put a tool into the published state (ToolPolicy::publish, ADR-35).
+ * Its membership matches ADMIN_ROLES today, but the two answer different questions —
+ * "who administers the platform" and "who may publish" — so they are named separately.
+ */
+export const PUBLISHER_ROLES: readonly Role[] = ["owner", "pm"];
+
 export function hasAnyRole(user: User | null, roles: readonly Role[]): boolean {
   return Boolean(user && roles.some((role) => user.roles.includes(role)));
+}
+
+/**
+ * Whether the signed-in user may publish. UX ONLY: the guarantee is the backend, which
+ * answers 403 to a `status: "published"` from anyone else (ADR-35).
+ */
+export function canPublish(user: User | null): boolean {
+  return hasAnyRole(user, PUBLISHER_ROLES);
 }
 
 /**

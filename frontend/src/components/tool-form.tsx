@@ -7,6 +7,8 @@ import { getCategories, getRoles, getDepartments, ValidationError } from "@/lib/
 import type { ToolPayload } from "@/lib/api";
 import { localizedName, sortByLocalizedName } from "@/lib/localized-name";
 import { CheckboxGroup } from "@/components/checkbox-group";
+import { useAuth } from "@/lib/auth-context";
+import { canPublish } from "@/lib/roles";
 import type { Category, Department, RoleOption, Difficulty, ToolStatus } from "@/types";
 
 type ToolFormProps = {
@@ -34,6 +36,8 @@ export function ToolForm({ initialValues, onSubmit }: ToolFormProps) {
   const t = useTranslations("common");
   const locale = useLocale();
   const router = useRouter();
+  const { user } = useAuth();
+  const mayPublish = canPublish(user);
 
   const [values, setValues] = useState<ToolPayload>(initialValues ?? EMPTY);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -87,6 +91,13 @@ export function ToolForm({ initialValues, onSubmit }: ToolFormProps) {
       documentation_url: values.documentation_url?.trim() ? values.documentation_url.trim() : null,
       video_url: values.video_url?.trim() ? values.video_url.trim() : null,
     };
+
+    // A non-publisher never sends `status`. The backend forces a draft on create and leaves the
+    // stored status untouched on update — whereas sending the value the form loaded would make an
+    // employee's own PUBLISHED tool fail with 403 on every save.
+    if (!mayPublish) {
+      delete payload.status;
+    }
 
     try {
       await onSubmit(payload);
@@ -213,22 +224,30 @@ export function ToolForm({ initialValues, onSubmit }: ToolFormProps) {
         {fieldErrors.difficulty ? <p className="text-xs text-error">{fieldErrors.difficulty[0]}</p> : null}
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="tool-status" className="text-sm font-medium text-text-primary">{t("tools.form.statusLabel")}</label>
-        <select
-          id="tool-status"
-          value={values.status}
-          onChange={(event) => setField("status", event.target.value as ToolStatus)}
-          className="rounded-md border border-border bg-card px-3 py-2 text-sm text-text-primary"
-        >
-          {STATUSES.map((status) => (
-            <option key={status} value={status}>
-              {t(`tools.form.status.${status}`)}
-            </option>
-          ))}
-        </select>
-        {fieldErrors.status ? <p className="text-xs text-error">{fieldErrors.status[0]}</p> : null}
-      </div>
+      {mayPublish ? (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="tool-status" className="text-sm font-medium text-text-primary">{t("tools.form.statusLabel")}</label>
+          <select
+            id="tool-status"
+            value={values.status}
+            onChange={(event) => setField("status", event.target.value as ToolStatus)}
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-text-primary"
+          >
+            {STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {t(`tools.form.status.${status}`)}
+              </option>
+            ))}
+          </select>
+          {fieldErrors.status ? <p className="text-xs text-error">{fieldErrors.status[0]}</p> : null}
+        </div>
+      ) : (
+        // Two wordings, because one cannot be true in both modes: creating really does produce a
+        // draft, while editing leaves the stored status alone — including a published one.
+        <p className="text-xs text-text-secondary">
+          {initialValues ? t("tools.form.statusHintEdit") : t("tools.form.statusHintCreate")}
+        </p>
+      )}
 
       <CheckboxGroup
         heading={t("tools.form.categoriesHeading")}

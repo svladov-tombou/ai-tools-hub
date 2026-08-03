@@ -21,6 +21,18 @@ class Tool extends Model
      */
     public const SEES_ALL_TOOLS_ROLES = ['owner', 'pm', 'manager'];
 
+    /**
+     * The SAME trap User documents: a column default is a DATABASE default, so after an insert
+     * that omitted `status` the stored row says 'published' while the model in memory carries
+     * null — and the create endpoint returned `"status": null` for a tool the database had
+     * published. ADR-35 lets owner and pm rely on that default, so model and schema must agree.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'status' => 'published',
+    ];
+
     public function categories(): BelongsToMany
     {
         return $this->belongsToMany(Category::class);

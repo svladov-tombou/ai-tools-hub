@@ -1577,3 +1577,253 @@ only as long as load order cooperated. The new file uses the shared `createUserW
 - **Skipping the discrimination probe and trusting the green suite** — rejected; the probe is the only
   thing that distinguished six real tests from four that would have passed against no implementation
   at all.
+
+---
+
+## ADR-37: ADR-35 phase 2 — publishing as a Form Request rule, and status made symmetric (backend only)
+
+**Status:** Accepted
+
+**Context:** ADR-35 points (5)–(8) decided that only `owner` and `pm` may publish; ADR-36 delivered
+visibility. This is publishing, backend only — the frontend follows as its own phase. Before this
+change any authenticated user could `POST` a tool with `status: published`, because
+`ToolPolicy::create` returns `true`, `status` is fillable, and both Form Requests validated it as
+`in:draft,published` with no role condition.
+
+**Decision:**
+
+(1) A new model-less ability `ToolPolicy::publish(User)` — `hasRole('owner') || hasRole('pm')`,
+mirroring `update()` — is the single home of the role test. Model-less because the answer never
+depends on WHICH tool, and the check runs before a tool exists (create) or is loaded (update).
+
+(2) **The rule lives in the Form Requests' `authorize()`, not in `ToolPolicy::update`.** A policy
+ability receives the model and the user but never the payload, so it structurally cannot see that
+`status` is the field being set. This is the ADR-28 precedent and buys the same property: `authorize()`
+runs BEFORE validation, so the refusal cannot depend on what else the request carries.
+
+(3) `StoreToolRequest::prepareForValidation()` forces `draft` for a non-publisher — but ONLY when the
+key is absent (`! filled('status')`). `prepareForValidation` runs BEFORE `authorize()`, so overwriting
+an explicitly sent `published` there would convert the intended 403 into a silent downgrade and hand
+the caller a `201` for a publication that never happened.
+
+(4) An explicit `status: published` from `employee` or `manager` is **403, never a coercion to draft**
+(ADR-35(7)). Nothing is written: the refusal precedes both validation and the insert.
+
+(5) `UpdateToolRequest` has **no `prepareForValidation()`, deliberately**, and carries a comment
+saying so. Forcing a status on update would unpublish a published tool whenever its author saved an
+unrelated edit, because the form sends the whole payload and a rename would carry the forced draft
+with it.
+
+(6) **The publish ability guards EVERY change of `status`, in both directions — not only the move to
+`published`.** `owner` and `pm` alone decide a tool's status; `employee` and `manager` cannot move a
+tool either way, including a tool they authored. This is a deliberate correction of ADR-35(5), which
+restricted only the value `published` and therefore left an author free to pull their own published
+tool back to `draft`.
+
+The gap was not spotted while ADR-35 was being written; it surfaced because this phase's test (k) was
+asked to state, out loud, what the letter of ADR-35 permitted. Written down as an assertion, "an
+author may unpublish their own tool" read as a hole rather than a rule: with draft visibility
+(ADR-36), an employee who unpublishes their own tool removes it from everyone else's list. That hands
+the author control of the tool's visibility and routes around the moderation the two statuses exist to
+provide. A test that merely passed would have hidden this; a test that had to spell out the behaviour
+exposed it.
+
+(7) **"A change of `status`" is defined against the STORED value, not against the request.** The
+request carries a change only when `status` is present AND differs from the row's current status.
+Three cases are therefore NOT a change and are not refused:
+  - the key is absent (the ordinary edit — a rename must not become a 403);
+  - the key is present and equals the stored status (an API client echoing the object back);
+  - creation, where there is no previous value — `StoreToolRequest` keeps the rule that only an
+    explicit `published` needs the ability, since `draft` is what a non-publisher would be given
+    anyway.
+A no-op that names the current value stays allowed even when that value is `published`: it changes
+nothing, and refusing it would break clients that send the whole object back unchanged. It is not a
+hole — the same request against a `draft` tool is a 403.
+
+(8) The comparison uses `has('status')`, not `filled('status')`. The definition is "the key is present
+and the value differs", and `has()` is the literal reading; it is also the safer one, since a
+`status: null` from a non-publisher then needs the ability instead of slipping through as "absent".
+`UpdateToolRequest` reaches the stored row through **route model binding** — the bound `Tool` is
+available in `authorize()`, because binding resolves before the request does — which keeps the rule in
+the Form Request rather than pushing it into the controller.
+
+(9) **No migration, and the controller is byte-identical.** The column default stays `published`,
+which is still correct: non-publishers never reach it (point 3 fills their value in the application
+layer) and publishers should get it.
+
+(10) **A pre-existing bug surfaced and was fixed, because point (9) is not observable without it.**
+The test asserting that an owner creating a tool without a status gets `published` failed: the stored
+row said `published` while the API answered `"status": null`. This is exactly the trap `User` already
+documents — a column default is a DATABASE default, and Eloquent does not read it back after an
+insert that omitted the column. `Tool` now carries
+`protected $attributes = ['status' => 'published']`, the same fix `User` uses for `is_active`. Without
+it ADR-35(8) is true in the database and false in the response.
+
+**Consequences and measurements:**
+
+- **Full suite green: 150 tests, 389 assertions.** `tests/Feature/ToolPublishingTest.php` is a new
+  file with 16 tests; a new file rather than additions to `ToolApiTest.php`, which is at 287 lines
+  against a ~300 guideline and declares file-scope helpers that Pest would refuse to see redeclared.
+- **Probe 1 — the whole rule removed** (both `authorize()` bodies to `return true`, the forcing
+  deleted), run against the 11 tests that existed before the symmetry change: **6 failed.** The
+  central case `employee cannot publish their OWN tool` returned **200**, and
+  `refused BEFORE validation runs` returned **422 instead of 403**, which is the measurement that the
+  Form Request placement actually buys what point (2) claims.
+- **Probe 2 — the old asymmetric rule restored** (refuse only the value `published`), against all 16
+  tests: **3 failed** — an author unpublishing their own tool (200 where 403 is now required), a
+  manager doing the same, and the `published`-no-op case, which the old rule wrongly refused with 403.
+  Those three are exactly what point (6) adds.
+- **Probe 3 — the rule degraded to "any present `status` key is refused"**: **exactly 2 failed**, both
+  boundary tests, while the other 14 stayed green. That is the measurement that earns the boundary
+  cases their place: without them this degradation ships silently and breaks every ordinary edit that
+  echoes the status back.
+- **Not every test discriminates, and that is recorded rather than glossed over.** Under probe 1, 5 of
+  11 passed either way (owner and pm publishing, the owner's default, the no-unpublish-on-rename
+  guard); under probe 2, 13 of 16. They guard the opposite failure — a rule that refuses too much —
+  which is a real risk here, as probe 3 demonstrates.
+- **Verified live** with real tokens: employee `PUT {status: published}` on their own draft → 403 with
+  the stored status unchanged; manager the same → 403; employee `POST` with explicit `published` → 403
+  and nothing written; employee `POST` without a status → `draft`; owner `POST` without a status →
+  `published` (and NOT `null`, per point 10); owner publishes, then the author renames with no status
+  key → **stays published**; the author's `published → draft` → 403; owner's `published → draft` →
+  200. Dev data was restored afterwards and checked: 10 tools, drafts 1, 5 and 10, original names.
+- **Still owed by the frontend phase:** the status control must disappear for non-publishers, and the
+  payload must OMIT `status` rather than echo the loaded value — otherwise an employee editing their
+  own published tool would send `status: published`. That case is a no-op under point (7) and would
+  pass, but on a draft it is a 403 on every save, so omission is the correct client behaviour, not a
+  detail.
+
+**Alternatives considered:**
+
+- **The author may unpublish their own tool (the asymmetric variant)** — the behaviour ADR-35(5)
+  literally allowed and this phase's test (k) originally asserted. Rejected: with ADR-36's visibility
+  rules, unpublishing hides the tool from every other employee's list, so an author who can do it
+  controls who sees their tool and bypasses moderation entirely. Status is an owner/pm decision, and a
+  decision one side can reverse unilaterally is not a decision. Test (k) was **inverted from 200 to
+  403 rather than deleted** — the case stays valid, only the expected answer changed.
+- **Silently coercing an explicit `published` to `draft`** — rejected per point (4); a `201` for a
+  publication that did not happen is worse than a refusal.
+- **`filled('status')` instead of `has('status')`** — rejected per point (8): it would treat
+  `status: null` as absent and let a non-publisher past the check.
+- **Putting the rule in `ToolPolicy::update`** — rejected because it cannot work; the method never
+  sees the payload.
+- **Comparing against the request instead of the stored row** ("a present key means a change") —
+  rejected; probe 3 measures exactly what it costs.
+- **Adding `prepareForValidation()` to `UpdateToolRequest` for symmetry of shape** — rejected per
+  point (5); shape symmetry would buy a silent unpublish.
+- **Changing the column default to `draft`** — rejected per point (9), and it would have been an
+  ask-first schema change for no gain.
+- **Asserting the owner's default only through the JSON response** — rejected once the two disagreed;
+  the test now asserts the stored row and the response separately, because they are two claims.
+
+---
+
+## ADR-38: ADR-35 phase 2, frontend — the status control is absent for non-publishers, and the payload omits the field
+
+**Status:** Accepted
+
+**Note on the commit:** this ADR and ADR-37 ship in ONE commit, at the developer's decision. That
+deviates from `docs/workflow.md` §Splitting work, which makes backend and frontend separate phases with
+separate commits, and it is recorded here rather than left to look like an oversight. The reason given:
+the backend rule and the UI are one logical unit for this feature — the rule without the UI is half a
+feature, and the UI without the rule is fake security. The phase 1 / phase 2 split (visibility vs
+publishing) stays the real commit boundary, and each phase still gets its own ADR.
+
+**Context:** ADR-37 made the API refuse a `status` change from anyone but `owner` and `pm`. This is the
+client half: ADR-35(9) requires the control to disappear for non-publishers rather than be disabled.
+Reconnaissance found a trap that changed the shape of the work: `edit-tool-form.tsx`'s `toPayload()`
+copies `status: tool.status` into the payload, and `tool-form.tsx` sent that object wholesale. Hiding
+the control alone would therefore have left an employee editing their own PUBLISHED tool sending
+`status: "published"` on every save. Under ADR-37(7) that particular case is a no-op and would pass —
+but on a draft it is a 403 on every save, so the client must OMIT the field, not merely stop showing it.
+
+**Decision:**
+
+(1) **The dictionary went in first, as its own step** — `tools.form.statusHintCreate` and
+`tools.form.statusHintEdit` in both locales, before any code referenced them, because
+`messages/bg/common.json` is the type source for `t()` and the reverse order does not compile. Both
+files verified in sync at 156 keys each (154 before).
+
+(2) **Two wordings, not one**, because a single sentence cannot be true in both modes: creating really
+does produce a draft, while editing leaves the stored status alone — including a published one. A
+create-worded hint shown on an edit screen would tell an employee their published tool is about to
+become a draft, which is exactly the fear the hint exists to remove. `initialValues` already
+distinguishes the two modes in `ToolForm`, so no new prop was needed.
+
+(3) The hints name **"the catalog administrators"**, not `Owner` or `Project Manager`. The role labels
+live in the dictionary as `roles.owner` / `roles.pm`, and repeating them inside another string
+duplicates them — change a label and the two drift. The word "administrator" was already in the
+dictionary (`settings.users.selfRolesNotice`), and ADR-12 calls this pair "catalog
+administrators/moderators", so the text matches the recorded decision. The wording describes the
+process rather than the prohibition: there is no "you cannot", because an employee producing a draft is
+the normal case, not an offender.
+
+(4) `ToolPayload.status` becomes **optional**, and `tool-form.tsx` deletes it from the payload when
+`!mayPublish`. This is the point of the phase, per the trap in the Context: the field is omitted, not
+merely hidden. The backend then forces a draft on create and leaves the stored status untouched on
+update (ADR-37).
+
+(5) **The control is OMITTED, not disabled** — the ADR-31 and ADR-34(5) precedent: a disabled input
+still holds a value and invites someone to wire it up. Where the select would be, non-publishers get
+the hint instead, styled like the existing `rolesHint` (`text-xs text-text-secondary`).
+
+(6) `src/lib/roles.ts` gains `PUBLISHER_ROLES` and a UX-only `canPublish()`. Its membership is
+identical to `ADMIN_ROLES` today; the two are named separately because they answer different questions
+— "who administers the platform" and "who may publish". Both are UX only, as everything in that file
+is; the guarantee is `ToolPolicy::publish`.
+
+(7) **No role check in `edit-tool-form.tsx` or `new-tool-form.tsx`.** One place decides this, and it is
+the form. `toPayload()` keeps `status: tool.status`, so a publisher's select opens on the tool's real
+current status.
+
+**Consequences and measurements:**
+
+- `npx tsc --noEmit`, `npm run lint` and `npm run build` all clean — 18 static pages generated,
+  including `/bg/tools/new` and `/en/tools/new`, which is the check `tsc` alone does not perform: it
+  proves the new keys resolve at build time in both locales.
+- **Verified in a real browser across three roles and both locales**, driving the app with curl-minted
+  tokens in `localStorage` rather than the login form (pitfalls #3a):
+
+  | role | screen | locale | `#tool-status` | hint |
+  |---|---|---|---|---|
+  | employee | create | bg | absent | statusHintCreate |
+  | employee | edit | bg | absent | statusHintEdit |
+  | employee | create | en | absent | statusHintCreate |
+  | employee | edit | en | absent | statusHintEdit |
+  | manager | create | bg | absent | — |
+  | owner | edit | bg | **present**, value = the tool's real status | **none** |
+
+- **The owner row is the discriminating one:** the select is there AND the hint count is zero. A
+  muddled condition would have shown one of them to both roles, and every other row would still look
+  right.
+- **The trap from the Context was exercised end to end, not reasoned about:** an employee created a tool
+  through the UI (landed with the `Чернова` badge), an owner published it, and the employee then renamed
+  it through the UI — the save succeeded and the badge did **not** come back. Before the payload
+  omission that save would have carried `status: "published"`.
+- **Both directions were driven through the UI as an owner**: draft → published removed the badge from
+  the card while the two seeded drafts kept theirs, and published → draft brought it back. An employee
+  opening the same published tool they authored gets no control at all, so the 403 is unreachable from
+  the UI — the API refusal (ADR-37) is what stands behind it.
+- Console clean across the whole run: 0 errors, 0 warnings, no hydration warnings.
+- Dev data restored and checked after every probe: 10 tools, drafts 1, 5 and 10, original names. Two
+  tools created during verification were deleted.
+- `tool-form.tsx` is now 308 lines, over the 150 ceiling for components. Not split: it is one form with
+  one submit path, `ADR-34` already recorded it as the accepted precedent for a field-heavy component
+  kept whole, and splitting it by field group would scatter one payload across several files.
+
+**Alternatives considered:**
+
+- **Disabling the status select instead of omitting it** — rejected per (5); a disabled input still
+  holds a value.
+- **One hint key for both modes** — rejected per (2); the shorter version lies on the edit screen.
+- **Sending `status: "draft"` explicitly for non-publishers instead of omitting the key** — rejected:
+  it works on create but silently unpublishes a published tool on update, and it makes the client
+  responsible for a default the backend already owns.
+- **Naming the roles in the hint text** (`Owner` / `Project Manager`) — rejected per (3); it duplicates
+  dictionary labels that can drift.
+- **Reusing `ADMIN_ROLES` for the publish check** — rejected per (6); same membership today, different
+  question, and collapsing them would hide the day the two diverge.
+- **A role check inside `edit-tool-form.tsx`** — rejected per (7); two places deciding one thing is how
+  they come to disagree.
+- **Splitting `tool-form.tsx` to satisfy the size ceiling** — rejected per the consequence above; the
+  ceiling is not a goal.

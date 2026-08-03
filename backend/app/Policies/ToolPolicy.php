@@ -44,6 +44,19 @@ class ToolPolicy
     }
 
     /**
+     * Determine whether the user can put a tool into the published state (ADR-35).
+     *
+     * Deliberately model-less: the answer never depends on WHICH tool, and the check runs
+     * in the Form Requests before a tool exists (create) or is loaded (update). Explicit
+     * role names, mirroring update() below.
+     */
+    public function publish(User $user): bool
+    {
+        return $user->hasRole('owner')
+            || $user->hasRole('pm');
+    }
+
+    /**
      * Determine whether the user can update the model.
      */
     public function update(User $user, Tool $tool): bool
