@@ -2141,6 +2141,16 @@ only place where a user can throw somebody else's access to their account away.
    old tokens, which is not the same thing as expiry. Whether tokens should get a lifetime, and whether
    old rows should be pruned, is its own decision — a security rule and a data-retention rule at once —
    and is out of scope for `/profile`.
+2. **Laravel's validation messages are still English, and this screen raises the priority of that
+   debt.** It was already recorded (`docs/decisions.md:344`, "Backend localisation is deferred") but it
+   changed audience here: until now it affected ADMIN screens only — `settings/users`, categories,
+   tools — whose users are `owner` and `pm`. This form belongs to EVERY role, and its single most
+   likely error, a mistyped current password, arrives as `errors.current_password[0]` and is rendered
+   verbatim under the field, in English, in both locales. It is deliberately not patched here:
+   substituting one backend message with a dictionary key of our own would make `/profile` the only
+   form in the project that second-guesses the API's field errors, and would create a special case to
+   unpick on the day the systemic fix lands. `profile.password.validationFailed` covers the
+   form-level line, which is the layer this project does own (`users-admin.tsx:94-103`).
 
 **Alternatives considered:**
 

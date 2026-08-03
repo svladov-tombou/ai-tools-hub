@@ -193,5 +193,23 @@
       "validationFailed": "Please correct the highlighted fields.",
       "genericError": "Something went wrong while saving. Please try again."
     }
+  },
+  "profile": {
+    "title": "Profile",
+    "name": "Name",
+    "email": "Email",
+    "roles": "Roles",
+    "department": "Department",
+    "noDepartment": "No department",
+    "password": {
+      "title": "Change password",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "submit": "Update password",
+      "success": "Password changed. Your other active sessions have been signed out.",
+      "validationFailed": "The password was not changed. Check the details and try again.",
+      "genericError": "Something went wrong. The password was not changed."
+    }
   }
 }
