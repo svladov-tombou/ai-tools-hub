@@ -11,13 +11,16 @@ class ToolController extends Controller
 {
     public function index(Request $request)
     {
-        return Tool::filter($request)
+        return Tool::visibleTo($request->user())
+            ->filter($request)
             ->with(['categories', 'roles', 'departments', 'creator'])
             ->paginate(15);
     }
 
     public function show(Tool $tool)
     {
+        $this->authorize('view', $tool);
+
         return $tool->load('categories', 'roles', 'departments', 'creator');
     }
 

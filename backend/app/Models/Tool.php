@@ -12,6 +12,15 @@ use Illuminate\Http\Request;
 #[Fillable(['name', 'description', 'url', 'documentation_url', 'video_url', 'difficulty', 'status'])]
 class Tool extends Model
 {
+    /**
+     * owner, pm and manager see every tool, including every draft (ADR-35). Explicit role
+     * names, mirroring ToolPolicy (ADR-12) and CategoryPolicy (ADR-28) — the `level` helpers
+     * on User stay unused on purpose.
+     *
+     * @var list<string>
+     */
+    public const SEES_ALL_TOOLS_ROLES = ['owner', 'pm', 'manager'];
+
     public function categories(): BelongsToMany
     {
         return $this->belongsToMany(Category::class);
@@ -57,5 +66,20 @@ class Tool extends Model
                 $slug = $request->string('department');
                 $query->whereHas('departments', fn (Builder $query) => $query->where('slug', $slug));
             });
+    }
+
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        foreach (self::SEES_ALL_TOOLS_ROLES as $role) {
+            if ($user->hasRole($role)) {
+                return $query;
+            }
+        }
+
+        // Nested, so the OR cannot leak past a filter clause AND-ed on afterwards.
+        return $query->where(function (Builder $query) use ($user) {
+            $query->where('status', 'published')
+                ->orWhere('created_by', $user->id);
+        });
     }
 }

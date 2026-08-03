@@ -1477,3 +1477,103 @@ a catalog whose value is that what it contains has been vetted.
   catalog.
 - **Changing the column default to `draft`** — rejected as unnecessary per point (8), and it would
   have been an ask-first schema change for no gain: `owner` and `pm` want the current default.
+
+---
+
+## ADR-36: ADR-35 phase 1 — draft visibility enforced in the query and in the view ability (backend only)
+
+**Status:** Accepted
+
+**Context:** ADR-35 decided the two tool policies and recorded the reconnaissance that produced them.
+This is its first half: visibility, backend only. Points (1)–(4) and the relevant parts of (10)–(11)
+are implemented; publishing — points (5)–(9) — is untouched and remains phase 2, as does the whole
+frontend. Nothing here revises ADR-35; where this ADR repeats a reason, ADR-35 is the source.
+
+Process note: the code and the tests were written by the coder subagent under the standing delegation
+permission now recorded in `docs/workflow.md`, from a specification that carried the complete desired
+end state. Reconnaissance, the review of the files on disk, and every command run stayed with the
+orchestrator, per CLAUDE.md.
+
+**Decision:**
+
+(1) `Tool::SEES_ALL_TOOLS_ROLES = ['owner', 'pm', 'manager']` — a model constant, so the trio is
+named once instead of twice. Explicit role names per ADR-35(10); `User::hasAtLeastLevel()` stays
+unused. The constant lives on the model rather than the policy because both readers need it and the
+model is the one the scope belongs to.
+
+(2) `Tool::scopeVisibleTo(Builder, User)` returns the query untouched for the trio, and otherwise adds
+`where(status = published OR created_by = user.id)`. **The closure is load-bearing, not style.**
+`scopeFilter` AND-s `whereHas` clauses on afterwards; a top-level `orWhere` would have made
+`?category=x&role=y` return every published tool regardless of the filter. `orWhere('created_by', …)`
+does not match NULL, which is exactly ADR-35's rule that an authorless draft is invisible to an
+employee — the rule falls out of SQL semantics rather than needing a third clause.
+
+(3) `ToolController@index` chains `Tool::visibleTo($request->user())->filter($request)`, in that
+order, so the paginator counts only what the caller may see. `show()` gained the
+`$this->authorize('view', $tool)` it never had.
+
+(4) `ToolPolicy::view` mirrors the scope through a private `seesAllTools()` helper; `viewAny` stays
+`true`, because a list is narrowed by the scope and not by the ability. The rule is therefore stated
+twice, once as SQL and once in PHP — accepted rather than abstracted: the two run in different places
+(a set vs a single row) and a shared helper would have to live on `User`, which CLAUDE.md restricts to
+relationships and scopes.
+
+(5) The tests went in a NEW file, `tests/Feature/ToolVisibilityTest.php`. `ToolApiTest.php` is already
+287 lines against a ~300 guideline, and — the harder constraint — it declares file-scope functions
+`makeRole`, `makeUserWithRole` and `makeTool`. Pest loads every test file into one process, so
+redeclaring any of those names is a fatal error, and *relying* on them from another file would work
+only as long as load order cooperated. The new file uses the shared `createUserWithRole()` from
+`tests/Pest.php` and one local helper named `visibilityTool()`, a name that appears nowhere else.
+
+**Consequences and measurements:**
+
+- **Full suite green: 134 tests, 355 assertions** (10 new). Not just the new file — the shared edits
+  to `Tool`, `ToolPolicy` and `ToolController` touch every existing tools test, and the pre-existing
+  ones pass unchanged. A user with NO role now falls into the employee branch, which is the safe
+  default and is what the older tests exercise.
+- **The new tests were verified to discriminate, by measurement rather than by assertion.** With
+  `scopeVisibleTo` reduced to `return $query` and `ToolPolicy::view` to `return true`,
+  **6 of the 10 failed**: `size 10 ≠ 9` (employee saw everything), `total 10 ≠ 9` (the paginator
+  lied), `size 2 ≠ 1` (the authorless draft leaked), and `200 ≠ 403` three times (`show` guarded
+  nothing). Both files were then restored and the full suite re-run green.
+- **The other 4 pass either way, and that is recorded rather than glossed over:** manager sees 10,
+  owner sees 10, an employee reads their own draft, anyone reads a published tool. They do not prove
+  the narrowing; they guard the opposite failure — a scope that hides too much — which is a real risk
+  here and a separate job. Four positive controls plus six discriminating cases is the honest split.
+- **Verified live per role** against the dev database (10 tools: 7 published, drafts 1 and 5 by the
+  owner, draft 10 by the employee): employee `total=8`, seeing only draft 10; manager, owner and pm
+  `total=10`, all three drafts. `GET /api/tools/1` — employee **403**, manager/owner/pm **200**;
+  `GET /api/tools/10` — employee **200**. Before the change the same employee token returned all 10
+  with 200 on the foreign draft, which is the before-measurement the numbers are compared against.
+- **The filter still composes as AND for a narrowed user:** `?category=code-assistants&role=owner` as
+  the employee returned exactly 1 (Claude), the same answer ADR-19 recorded for an unnarrowed user. A
+  leaked `orWhere` would have returned about 8 — this is the check that proves the closure in (2).
+- **The dev database shows 8-of-10 for an employee, while the tests assert 9-of-10.** Both are right:
+  the fixture builds 8 published tools where the seeded database has 7. Tests cannot use seed data
+  here — the suite runs `RefreshDatabase` with factories and `tests/Pest.php` states that tests do not
+  seed — so seeded drafts serve the live curl check and fixtures serve the suite.
+- **Pint was run against the four touched files only**, not project-wide: five seeders carry
+  pre-existing violations that the pathless command would have "fixed" into this commit. Recorded as
+  pitfall 11a.
+- **Still owed by phase 2:** every publishing rule, ADR-35 points (5)–(9) — non-admins can currently
+  still set `status: published` through the API, exactly as before. And the whole frontend: no role
+  grouping for the trio in `src/lib/roles.ts`, no `canPublish`, no change to the form. `getTools`
+  needed no change at all, which is ADR-35(4) working as intended — visibility follows the token, so
+  the client asked for nothing new.
+
+**Alternatives considered:**
+
+- **Adding the tests to `ToolApiTest.php`** — rejected per (5): the file is at its size guideline and
+  the helper-redeclaration hazard is a fatal error, not a style question.
+- **Reusing `makeTool()` from `ToolApiTest.php` in the new file** — rejected: it works only because
+  Pest happens to have loaded the other file, which is an implicit cross-file dependency between two
+  test suites that should be independent.
+- **A shared `User::canSeeAllTools()` used by both the scope and the policy** — rejected: it would put
+  business logic on a model that CLAUDE.md limits to relationships and scopes, to remove a two-line
+  duplication that reads clearly in both places.
+- **`return $query->where('status', 'published')->orWhere(…)` without the closure** — rejected, and it
+  is worth naming as a near-miss rather than an abstraction: it passes every test that does not also
+  apply a filter, and breaks the filters silently.
+- **Skipping the discrimination probe and trusting the green suite** — rejected; the probe is the only
+  thing that distinguished six real tests from four that would have passed against no implementation
+  at all.

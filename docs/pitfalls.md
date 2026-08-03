@@ -230,6 +230,14 @@ and against the two untouched sibling seeders showed all three fail identically 
 scaffold debt, not something the change introduced. Fixing it would have been unrelated
 cleanup across three files.
 
+**11a. `sail bin pint` with NO path rewrites the whole project, including that pre-existing debt.**
+Five seeders (`UserSeeder`, `ToolSeeder`, `DepartmentSeeder`, `RoleSeeder`, `CategorySeeder`) still
+fail `no_unused_imports` and friends per #11, so the plain command "fixes" five files nobody asked
+about and they land in your commit looking like part of the feature — and `git add` of named paths
+will not save you, because the paths are inside `backend/`. **Always pass the files you touched:**
+`./vendor/bin/sail bin pint --test <paths>` to check, then the same paths without `--test` to fix.
+Run it BEFORE `git add`, never after.
+
 ## Useful commands
 
 Dictionary sync check (run from `frontend/`):
