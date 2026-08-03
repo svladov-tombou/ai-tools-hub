@@ -69,7 +69,6 @@ a test that passes either way proves nothing.
 
 ## Before you write code
 Read `docs/pitfalls.md` before touching the frontend, migrations, or seeders.
-Read `docs/workflow.md` for the order of work.
 Read the relevant ADRs in `docs/decisions.md` before implementing anything non-trivial.
 Every completed phase ends with a new ADR (append-only; never edit a past one —
 mark it `Superseded by ADR-N`) and one logical commit.
@@ -87,9 +86,9 @@ so a mixed-language entry can never be cleaned up.
 
 ## Maintaining the rule files
 You append to `docs/decisions.md` and `docs/pitfalls.md` yourself, every phase.
-NEVER edit `CLAUDE.md` or `docs/workflow.md` on your own initiative — propose the exact
+NEVER edit `CLAUDE.md` on your own initiative — propose the exact
 replacement text and wait for the user to approve. If a rule here is wrong or outdated,
-say so; never silently work around it. Details in `docs/workflow.md`.
+say so; never silently work around it.
 
 ## Long-running processes
 The user starts the environment: `sail up -d` in `backend/`, `npm run dev` in `frontend/`.
