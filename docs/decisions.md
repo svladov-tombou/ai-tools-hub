@@ -1922,3 +1922,260 @@ no migration, no new dependency.
 - **Extending the backend to return a slimmer creator object** (just `id` and `name`) — not done: the
   response already excludes the password fields via `#[Hidden]`, and narrowing a working response shape
   is an ask-first API change with no benefit to this phase.
+
+---
+
+## ADR-40: The `/profile` page — own data read-only, and a self-service password change on its own endpoint
+
+**Status:** Accepted
+
+**Note on order:** this ADR is written BEFORE the code, the ADR-35 precedent, because the developer
+asked for the decisions to be recorded and reviewed first: this phase adds an endpoint and touches
+passwords. Implementation follows the `docs/workflow.md` split — backend (route, Form Request,
+controller, tests), then frontend (dictionary, `api.ts`, page) — each its own phase, commit and ADR.
+The verification notes this file usually carries are appended to ADR-40 itself for the backend phase
+(see Measurements below), at the developer's request; the frontend phase gets its own.
+
+**Context:** The navbar has offered a `Профил` link since ADR-15 — `src/lib/nav-links.ts:18`, with no
+`requiredRoles`, so every authenticated user sees it — and it has always 404'd: there is no
+`src/app/[locale]/profile/page.tsx`. Nothing else is broken; the file IS the route.
+
+The developer settled the scope. The page shows the signed-in user's name, email, roles and department
+**read-only**, and offers a password change **to every role**. Read-only is a deliberate narrowing
+rather than an omission: editing one's own name is exactly what would surface ADR-34's accepted
+limitation (the navbar keeps the old name until a reload, because `auth-context` exposes no
+`refresh()`), and that deferral stays deferred instead of being cashed in halfway through another
+phase.
+
+Reconnaissance, so both phases are built against the code rather than against memory:
+
+- `GET /api/user` returns `$request->user()->load('roles')` — the whole model minus
+  `#[Hidden] ['password', 'remember_token']` — so `department_id` is **already on the wire**.
+  `normalizeUser` (`src/lib/api.ts:37-43`) drops it on the way into the frontend `User` type.
+- `User` has **no `belongsTo(Department)` relation at all**. `department_id` is a bare column, kept out
+  of `#[Fillable]` and assigned directly by `UserController` (ADR-33).
+- The admin reset `PUT /api/users/{user}/password` is `owner`/`pm`-only through
+  `UserPolicy::updatePassword` → `isAdmin`, and `UpdateUserPasswordRequest` validates `password` with
+  `confirmed` + `Password::min(8)` and **no `current_password`** — an admin resetting somebody else's
+  password cannot know the old one. An employee changing their own password gets **403** there.
+- `src/lib/format-roles.ts` already renders a role list, and `RequireAuth` (ADR-34(5)) already guards a
+  page by auth alone — which is the correct guard here, since `/profile` is role-free.
+
+**Decision:**
+
+(1) **A NEW self-service endpoint, `PUT /api/user/password`, with a new Form Request.** The admin
+endpoint is neither reused nor relaxed. The two operations differ in BOTH halves of a request:
+authorization (any authenticated user, versus `owner`/`pm` only) and input (`current_password`
+required, versus impossible to require). ADR-33(1) already made "one rule per endpoint" this project's
+answer to that shape, and its own counter-example is the argument: `PUT /api/users/{user}` was split
+precisely because one handler serving two rules pushes the difference onto the client.
+
+(2) **The path carries no id, and that IS the authorization.** The route sits under `/user`, beside the
+existing identity route, not under `/users/{user}`. The target is the token's user by construction, so
+there is no way to name anybody else's password and no policy ability is added; the Form Request's
+`authorize()` returns `true` with a comment saying why. `auth:sanctum` on the group establishes the
+only fact this endpoint needs. An id in the path would create a question — whose password? — that then
+has to be answered in a policy; this shape has no question to answer.
+
+(3) **`current_password` is `required` and checked with Laravel's `current_password` rule**, which
+validates against the authenticated user's stored hash. A wrong old password is **422 naming
+`current_password`, not 403**: the actor is authorized — they may change their own password — they
+mistyped a value, so the message belongs beside that field. `confirmed` and `Password::min(8)` mirror
+`UpdateUserPasswordRequest` so the two paths cannot come to enforce different strengths. The strength
+rule is duplicated rather than extracted: there is no shared rules module, and adding one for two call
+sites is an ask-first "new kind of thing".
+
+(4) **A new thin `ProfileController@updatePassword`, not a method on `UserController`.** Every action
+in `UserController` authorizes against a route-bound target through `UserPolicy`; a method whose
+authorization works differently, sitting among them, is how the next reader mis-copies the pattern. The
+body is the admin one's two lines — assign, save, `noContent()` — carrying the same comment that the
+`hashed` cast hashes on assignment, so `Hash::make` here would double-hash. A new controller file is a
+file inside an existing pattern, not a new layer.
+
+(5) **ADR-33 is NOT revised.** The admin endpoint keeps its deliberate lack of a self-exclusion
+(ADR-33(2)), so an admin may still reset their own password without knowing it. The justification
+recorded for that — "there is no self-service password reset in this app", in ADR-33's context and in
+the docblock on `UserPolicy::updatePassword` — stops being true the day this ships. That is recorded
+here rather than quietly corrected: narrowing an accepted authorization decision is ask-first, and this
+feature does not need it. The stale docblock should read as known, not as an oversight.
+
+(6) **The department is resolved CLIENT-SIDE**, the shape `user-row.tsx:25` already uses:
+`getDepartments()`, `find` by `department_id`, label through `t(\`departments.${slug}\`)` on ADR-21's
+slug union. `GET /api/user`'s response shape is not touched and `User` gains no `belongsTo(Department)`:
+changing an existing response is ask-first (CLAUDE.md 4), adding the relation is a wider change than
+one screen needs, and the client already owns this lookup everywhere else it appears.
+
+(7) **A NEW password component, not a reuse of `user-password-form.tsx`.** That component's input ids
+are fixed (`user-password`, `user-password-confirmation`), its keys are `settings.users.*`, and it has
+no `current_password` field. Making it serve both screens would mean passing the ids and every label as
+props — which is not sharing behaviour, it is rewriting the component and adding a caller. What IS
+copied is the mechanism: the parent remounts it with a fresh `key` to clear it after a success, the
+ADR-24 / ADR-34 trick.
+
+(8) **The dictionary goes in first, as its own step** — a new `profile.*` section in
+`messages/bg/common.json` (the type source) and `messages/en/common.json`, before any component
+references it, both files ending in sync. The "no department" wording gets a `profile.*` key of its own
+rather than reaching into `settings.users.departmentNone`: a section is a namespace, and a page reading
+another screen's keys is coupled to a screen it has nothing to do with.
+
+(9) **The identity block is plain text, deliberately not disabled inputs** — the ADR-31 / ADR-34(5) /
+ADR-39(4) precedent. Name, email, roles and department are facts about the account, not fields, and a
+greyed-out input invites someone to wire it up. The route file follows `/settings/users`: an `async`
+page with `setRequestLocale` and the `<h1>`, wrapping a client component that reads `useAuth()` and
+calls `getDepartments()`. The guard is `RequireAuth`, not `RequireRole` — every role has a profile.
+
+(10) **`refresh()` on `auth-context` stays out of scope**, per the Context: with nothing editable the
+stale-navbar limitation cannot surface, and a password change alters nothing the navbar shows.
+
+(11) **A successful password change through this endpoint deletes ALL of the user's tokens EXCEPT the
+one that made the request.** The instrument is `$user->tokens()` narrowed with `whereKeyNot` on the
+current token's key — the `UserController:111` pattern from ADR-33(6), deliberately NOT identical to
+it: deactivation deletes everything because the target is somebody else and their access must fall in
+full, while here the actor is the person at the keyboard and their own access is the one thing that
+must survive. The current token is kept because `current_password` proved it a second earlier (point
+3); forcing a fresh login immediately after a successful, correctly authenticated action is a cost with
+nothing on the other side of it.
+
+**`Auth::logoutOtherDevices()` and the `auth.session` middleware are INAPPLICABLE here, recorded
+explicitly because they are the first thing anyone looking for "the established practice" will reach
+for.** Both invalidate SESSIONS, and this application has none: `AuthController:32` issues
+`createToken('api-token')`, there is no `Auth::login` anywhere in `app/`, `statefulApi()` is never
+called (`bootstrap/app.php:15-17` — the `withMiddleware` body is a bare comment), the client sends a
+Bearer header (`frontend/src/lib/api.ts:66`) and its single `fetch` passes no `credentials`
+(`frontend/src/lib/api.ts:68-71`), and the `sessions` table holds **0 rows** while `SESSION_DRIVER` is
+`database` (`.env:30`). `AuthenticateSession` appears in this codebase exactly once — the stock
+scaffold mapping at `config/sanctum.php:82` — wired to nothing.
+
+**Silence was not an option.** Laravel revokes nothing here by default; `logout` deletes only the
+current token (`AuthController:42`); ADR-32 declined a per-request check; and all 35 tokens in the dev
+database carry `expires_at = null`, so a leaked token stays valid without end. This endpoint is the
+only place where a user can throw somebody else's access to their account away.
+
+**Consequences:**
+
+- One new route inside the `auth:sanctum` group, one new Form Request, one new controller, one new
+  dictionary section, one new component, one new page — and **one gap closed in client normalization**:
+  `normalizeUser` starts carrying `department_id`, and the `User` type in `api.ts` gains
+  `department_id: number | null`. That is not an API change; the backend has always sent the field. It
+  converges with `AdminUser` in `types.ts`, which already carries it.
+- Every `useAuth().user` consumer gains the field. None of them has to use it.
+- **The tests must discriminate**, per the lesson recorded repeatedly in this file. The pair that
+  carries the whole point of decision (1): an `employee` gets **204** on `PUT /api/user/password` for
+  themselves and **403** on `PUT /api/users/{self}/password` — one user, one intent, two endpoints, two
+  answers. Plus: a wrong `current_password` answers 422 naming that field **and the stored hash is
+  unchanged** (asserted, not inferred from the status code); a missing `current_password` is 422 even
+  when the new password is perfectly valid, which is the assertion that goes red if the rule is ever
+  dropped; after a success the old password no longer authenticates and the new one does; an
+  unauthenticated call is 401.
+- **The revocation guarantee of point (11) needs REAL tokens in its test, and `Sanctum::actingAs()`
+  cannot supply them — measured against this install (Sanctum v4.3.3), not assumed.** `actingAs()`
+  (`vendor/laravel/sanctum/src/Sanctum.php:70-92`) writes no row to `personal_access_tokens`; it
+  attaches `Mockery::mock(self::personalAccessTokenModel())->shouldIgnoreMissing(false)` (`:72`).
+  Probed in `tinker`: the object's class is `Mockery_0_Laravel_Sanctum_PersonalAccessToken`,
+  `instanceof PersonalAccessToken` is **true**, `exists` is **false**, and both `->id` and `->getKey()`
+  answer **`false`**. Two things follow:
+  1. **An `instanceof PersonalAccessToken` check alone is NOT a sufficient guard**, because the double
+     passes it and `whereKeyNot(false)` then excludes nothing — every test using `actingAs` would
+     silently delete the very token it meant to keep, and the endpoint would look correct. The
+     condition must also require a stored row (`$current instanceof PersonalAccessToken &&
+     $current->exists`, excluding `$current->getKey()`). The other shape it has to survive is a real
+     `TransientToken`, which the guard attaches on the first-party-session path
+     (`vendor/laravel/sanctum/src/Guard.php:35`) that this app never takes; it has no key at all, and
+     `instanceof` rejects it first.
+  2. **The revocation test must mint real tokens with `createToken()` and drive the endpoint over a
+     Bearer header** (pitfalls #3b, which already says exactly this for anything where the token itself
+     is under test). Under `actingAs` there is nothing to revoke and nothing to keep, so the test would
+     pass while asserting nothing — the "passes either way" failure CLAUDE.md forbids. What it asserts:
+     two tokens before the call; after the 204 the count is 1 **and the surviving row is the current
+     token's key**, not merely "one row left"; and the revoked token answers **401** on a following
+     request, with `$this->app['auth']->forgetGuards()` between the two calls per pitfalls #3b.
+- There is no frontend unit-test framework (CLAUDE.md), so the page is verified in a real browser across
+  roles and both locales, per the definition of done — including the null-department branch.
+- `GET /api/user`, `UserController`, `UserPolicy`, `UpdateUserPasswordRequest` and the users screen are
+  all untouched. No migration, no new dependency.
+- Dev credentials change during verification and must be restored by hand: `UserSeeder` uses
+  `firstOrCreate` (ADR-33(8)), so re-running it will NOT reset an existing row's password. The same
+  verification will delete dev tokens by design (point 11), so any minted Bearer tokens held elsewhere
+  stop working.
+
+**Measurements from the backend phase (points 1-5 and 11):**
+
+- **Full suite green: 162 tests, 425 assertions**, against 150 / 389 before this phase — 12 new cases
+  from 9 `test()` declarations in `tests/Feature/ProfilePasswordTest.php` (the last one a four-role
+  dataset). Three mutation probes were run and then reverted.
+- **Probe 1 — `&& $current->exists` removed from the exclusion: 0 tests failed.** Reported as a
+  **positive control, not a guarantee.** There is no reachable path today in which that clause changes
+  behaviour: in a real request `currentAccessToken()` is always a stored row, so `exists` is true and
+  the two versions are identical; under `Sanctum::actingAs` there is no row and both versions delete
+  everything — with the clause because nothing is excluded, without it because the Mockery double
+  answers `false` to `getKey()`, so `whereKeyNot(false)` becomes `id != 0` and matches every row. It
+  stays anyway, because the equivalence rests entirely on that `false`: a Sanctum version whose double
+  answered `null` would make it `whereKeyNot(null)` → `id != NULL`, which matches no row, and the
+  revocation would stop happening while the suite stayed green. That is a detail of a dependency this
+  project does not pin, so the clause is insurance against a silent break that **no test covers**, and
+  the controller's comment says exactly that rather than claiming it prevents deleting the current
+  token.
+- **Probe 2 — the `current_password:sanctum` rule removed (leaving only `required`): exactly 1 test
+  failed**, `a wrong current_password is a 422 on that field, and the stored hash is unchanged`, and it
+  failed **on the status — 204 instead of 422**. The missing-password test stayed green, correctly: it
+  is `required` that guards absence, and the two rules are separate assertions. Two things this probe
+  did NOT establish, recorded rather than glossed over: (a) **the stored-hash assertion never ran** —
+  `assertStatus` failed first, so the run reported 33 assertions instead of 36, meaning that probe
+  measures the refusal and not the "nothing was written" half of the same test; and (b) **the
+  `:sanctum` parameter itself remains unverified by the suite** — removing only the parameter leaves
+  every test GREEN, because the `shouldUse()` chain does resolve to the sanctum guard today. The
+  explicit guard is therefore a second positive control, kept for the reason stated in point (3): the
+  symptom of that chain breaking is a refusal on a CORRECT password.
+- **Probe 3 — `whereKeyNot` swapped for `whereKey` (keep-only instead of keep-all-but): exactly 1 test
+  failed, on the KEY COMPARISON** (`tests/Feature/ProfilePasswordTest.php:145`) while the count
+  assertion one line above it (`:144`) **passed**. The failure read `3 is identical to 2` — those are
+  ids, not counts: one row survived, and it was the OTHER token. This is the measurement that earns
+  line 145 its place, because a bare counter is green under an exactly inverted policy.
+
+**Carried forward, NOT decided here (the project keeps no separate backlog file):**
+
+1. **Tokens accumulate and never expire.** The dev database holds **35 rows in
+   `personal_access_tokens` for 4 users**, every one with `expires_at = null`; `config/sanctum.php:53`
+   sets `'expiration' => null`; `logout` deletes only the current token (`AuthController:42`); and
+   ADR-32 deliberately declined a per-request check. Point (11) gives a user one way to clear their own
+   old tokens, which is not the same thing as expiry. Whether tokens should get a lifetime, and whether
+   old rows should be pruned, is its own decision — a security rule and a data-retention rule at once —
+   and is out of scope for `/profile`.
+
+**Alternatives considered:**
+
+- **Relaxing `UserPolicy::updatePassword` so any user may act on themselves** — rejected per (1) and
+  (5): that path has no `current_password` and cannot grow one without breaking the admin reset, so the
+  relaxation would let a stolen token change the password it was stolen with, and it would revise an
+  accepted authorization decision.
+- **One endpoint requiring `current_password` only when the actor is the target** — rejected: it is the
+  "one handler, two rules" shape ADR-33 split apart, and the condition would sit in a Form Request
+  reading as an exception rather than as a rule.
+- **Reusing `PUT /api/users/{user}/password` with the signed-in user's own id** — rejected per (2); an
+  id in the path invites a caller to send somebody else's.
+- **Putting the method on `UserController`, or on `AuthController`** — rejected per (4).
+  `AuthController` owns login and logout, the two token operations; changing a password is not a session
+  operation.
+- **403 for a wrong `current_password`** — rejected per (3): the user is authorized and mistyped, and a
+  403 cannot be shown next to the field that caused it.
+- **Adding `belongsTo(Department)` to `User` and eager-loading it on `/api/user`** — rejected per (6):
+  an ask-first response change plus a new model relation, to save a lookup the client already performs
+  on the users screen.
+- **Reusing `user-password-form.tsx` with id and label props** — rejected per (7); every string as a
+  prop is not reuse.
+- **Making name and email editable** — rejected by the developer for this phase: it is the one change
+  that would force `auth-context` to grow a `refresh()`, which ADR-34 deliberately deferred.
+- **Disabled inputs for the read-only facts** — rejected per (9).
+- **Guarding `/profile` with `RequireRole`** — never on the table; the nav link has no `requiredRoles`,
+  and a profile page some roles cannot open would be a bug rather than a policy.
+- **`Auth::logoutOtherDevices()` or the `auth.session` middleware for the revocation** — rejected per
+  (11) as inapplicable, with the citations: they invalidate sessions, and this app authenticates only by
+  Bearer token and has zero session rows.
+- **Revoking nothing at all** (Laravel's default behaviour) — rejected per (11): with `expires_at` null
+  on every token, a leaked token would outlive the password it was taken with.
+- **Revoking every token including the current one** — rejected per (11): it logs the user out of the
+  screen they just used, one second after they proved the old password, and buys nothing the exclusion
+  does not already provide.
+- **Guarding the exclusion with `instanceof PersonalAccessToken` alone** — rejected on measurement, not
+  on taste; see the consequence above, where `Sanctum::actingAs()`'s Mockery double passes `instanceof`
+  and reports `getKey()` as `false`.

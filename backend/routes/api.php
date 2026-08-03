@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ToolController;
 use App\Http\Controllers\UserController;
@@ -19,6 +20,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user()->load('roles');
     });
+
+    // Self-service, deliberately without an id in the path: the target is the token's own
+    // user, so there is nobody else this route could name (ADR-40(2)).
+    Route::put('/user/password', [ProfileController::class, 'updatePassword']);
 
     Route::post('/logout', [AuthController::class, 'logout']);
 
