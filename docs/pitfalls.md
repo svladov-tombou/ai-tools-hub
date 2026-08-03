@@ -189,6 +189,16 @@ a real security hole, so confirm out-of-band with `curl` before touching the cod
 guard's user directly and would mask the Bearer header entirely — use REAL tokens
 (`->createToken('t')->plainTextToken`) whenever the token itself is what is under test.
 
+**3c. To prove something is ABSENT in the browser, assert against RENDERED text, not document text.**
+next-intl serialises the whole message catalogue into the RSC payload, so every dictionary string sits
+in a `<script>` in the document regardless of what renders. `document.body.textContent.includes("…")`
+therefore returns **true for a correctly hidden element** — a false positive that reads exactly like a
+conditional that failed to hide. Real case: a creator row was properly omitted for an authorless tool
+and the check still said the text was on the page; the single match was the serialised dictionary.
+Use `document.body.innerText`, which returns only what is visible, or narrow the query to the element
+you actually mean (`card.querySelector(...)`). The same trap applies to any string that lives in
+`messages/*/common.json` — which is every user-facing string in this project.
+
 **4. `git status` collapses NEW DIRECTORIES.** Use `git status --short -uall` or you cannot see
 what is about to be committed. Paths with square brackets need QUOTES in `git add`.
 Never `git add .`.

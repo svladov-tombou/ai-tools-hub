@@ -1827,3 +1827,98 @@ current status.
   they come to disagree.
 - **Splitting `tool-form.tsx` to satisfy the size ceiling** — rejected per the consequence above; the
   ceiling is not a goal.
+
+---
+
+## ADR-39: The tool's creator shown by name on the card and the edit screen — frontend only
+
+**Status:** Accepted
+
+**Context:** The developer asked for the creator's NAME (not the id) on the tool card and the edit
+screen. Reconnaissance found the whole backend already in place, so this is a frontend-only phase:
+`ToolController` eager-loads `creator` on all four paths (`index`, `show`, `store`, `update`),
+`Tool::creator()` is a `belongsTo(User::class, 'created_by')`, and `src/types.ts` already declared
+`creator: { id, name, email } | null` — a field nothing rendered. `password` and `remember_token` stay
+out of the payload through `User`'s `#[Hidden]`, so nothing sensitive rides along.
+
+**Verified rather than assumed:** the developer asked specifically whether `creator` arrives on the
+edit screen's own path, not merely in the list. `GET /api/tools/2` — what `getTool()` calls — was
+curled and its keys dumped: `creator` is present with the name. The two paths were checked separately
+because "the list has it" is not evidence about `show`.
+
+Visibility of the creator was settled by the developer: every role sees it — for an internal catalog,
+who added a tool is not sensitive.
+
+**Decision:**
+
+(1) **One dictionary key, added first as its own step** — `tools.createdByLabel` in both locales
+(bg "Създаден от", en "Created by"), before any component referenced it, because
+`messages/bg/common.json` is the type source for `t()`. Both files verified in sync at 157 keys each
+(156 before). One key serves both screens.
+
+(2) **The colon lives in the JSX, not in the key**, matching the four sibling labels
+(`categoriesLabel`, `departmentsLabel`, `rolesLabel`, `difficultyLabel`), which all render as
+`{t(...)}:`. The rendered text is "Създаден от:" as specified; storing the colon would have made this
+one key differ from its neighbours for no gain.
+
+(3) **On the card the row goes LAST, below Difficulty**, inside the existing info block, and copies the
+inline shape Difficulty uses (`<p>` with a bold label span and a muted value span) rather than the
+`<div>`+`<p>` shape Categories/Departments/Roles use — the creator is a single short value, like
+Difficulty, not a joined list.
+
+(4) **On the edit screen it is plain text under the heading, deliberately NOT a form field.** The
+creator is a fact about the tool, not something anyone types; a disabled input would suggest otherwise
+(the ADR-31 / ADR-34(5) reasoning about controls that look editable). The heading and the line are
+wrapped in a `gap-1` column so they read as one unit, leaving the outer `gap-8` between that unit and
+the form.
+
+(5) **When `creator` is null the row is omitted entirely — no "Unknown" placeholder.** `created_by` is
+nullable with `nullOnDelete` (ADR-11), so a removed user leaves an authorless tool. The card already
+hides empty groups rather than printing placeholders, and this follows it. Both call sites carry a
+comment saying so, because an absent row is easy to mistake for a forgotten one.
+
+(6) `types.ts` and `api.ts` were NOT touched: the field and its type already existed. No backend change,
+no migration, no new dependency.
+
+**Consequences and measurements:**
+
+- `npx tsc --noEmit`, `npm run lint` and `npm run build` all clean; 18 static pages generated.
+- **Verified in a real browser, both locales, with curl-minted tokens (pitfalls #3a):**
+  - As **employee**, bg: all 8 tools visible to them show the row — seven "Създаден от: Иван Иванов"
+    and their own draft "Създаден от: Петър Георгиев". Two different names on one screen, which is the
+    check that discriminates: a hardcoded or mis-bound value would have printed one name everywhere.
+  - Row order inside the info block read off the DOM: `Категории, Отдели, Роли, Трудност, Създаден от`
+    — last, as specified, not merely "present somewhere".
+  - en: `Created by: Иван Иванов` — the label translates, the person's name stays as stored. Names are
+    data, not interface (the ADR-34 distinction).
+  - Edit screen, bg and en: the line sits directly after `<h1>` as a `<p>`, `isInsideForm: false`,
+    `isAnInput: false`, and zero inputs or selects named after the creator.
+- **The null branch was tested, not reasoned about.** No dev tool had a null `created_by`, and
+  `created_by` is deliberately not fillable, so the API cannot produce one. Tool 9's `created_by` was
+  set to null directly through `tinker`, checked, and restored to `1` in the same session: the card for
+  that tool rendered `Категории, Отдели, Роли, Трудност` with no creator row and no placeholder, while
+  Claude's card on the same screen still had its row; the edit screen showed no line after the heading.
+  Dev data confirmed afterwards: 10 tools, no null `created_by`, drafts 1, 5, 10.
+- **One false alarm worth recording**, because the naive check would have been reported as a bug: on the
+  authorless edit screen `document.body.textContent.includes("Създаден от")` returned **true** while the
+  row was correctly absent. The single hit was inside a `<script>` — next-intl serialises the whole
+  message catalogue into the RSC payload, so every dictionary string is in the document text regardless
+  of what renders. `document.body.innerText` returned false. **Assert against rendered text, not
+  document text, when checking that something is absent.**
+- Console clean: 0 errors, 0 warnings. `tool-card.tsx` is 136 lines and `edit-tool-form.tsx` 88 — both
+  inside the 150 ceiling for components.
+
+**Alternatives considered:**
+
+- **Showing "Неизвестен" / "Unknown" when the creator is missing** — rejected by the developer per (5);
+  the card's established behaviour is to hide an empty group.
+- **Rendering `created_by` (the id)** — rejected by the request itself; an id tells a reader nothing.
+- **Putting the row between Roles and Difficulty** — considered and rejected by the developer in favour
+  of last; the four existing rows describe the tool, the creator describes its provenance.
+- **A disabled input or read-only field on the edit form** — rejected per (4).
+- **Storing the colon inside the dictionary value** — rejected per (2).
+- **Adding a second key for the edit screen** — rejected; the label is identical in both places, and two
+  keys with the same text drift apart.
+- **Extending the backend to return a slimmer creator object** (just `id` and `name`) — not done: the
+  response already excludes the password fields via `#[Hidden]`, and narrowing a working response shape
+  is an ask-first API change with no benefit to this phase.

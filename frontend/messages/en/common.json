@@ -136,6 +136,7 @@
     "departmentsLabel": "Departments",
     "rolesLabel": "Roles",
     "difficultyLabel": "Difficulty",
+    "createdByLabel": "Created by",
     "links": {
       "open": "Open tool",
       "documentation": "Documentation",

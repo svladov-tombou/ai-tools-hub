@@ -136,6 +136,7 @@
     "departmentsLabel": "Отдели",
     "rolesLabel": "Роли",
     "difficultyLabel": "Трудност",
+    "createdByLabel": "Създаден от",
     "links": {
       "open": "Отвори инструмента",
       "documentation": "Документация",

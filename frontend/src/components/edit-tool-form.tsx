@@ -70,9 +70,18 @@ export function EditToolForm({ id }: { id: number }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="text-2xl font-semibold text-text-primary">
-        {t("tools.form.editTitle", { name: tool.name })}
-      </h1>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold text-text-primary">
+          {t("tools.form.editTitle", { name: tool.name })}
+        </h1>
+        {/* Plain text under the heading, deliberately NOT a form field: the creator is a fact
+            about the tool, not something anyone types. Hidden when absent, as in the card. */}
+        {tool.creator ? (
+          <p className="text-sm text-text-secondary">
+            {t("tools.createdByLabel")}: {tool.creator.name}
+          </p>
+        ) : null}
+      </div>
       <ToolForm initialValues={toPayload(tool)} onSubmit={handleSubmit} />
     </div>
   );

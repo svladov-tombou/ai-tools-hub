@@ -87,6 +87,18 @@ export function ToolCard({ tool }: { tool: Tool }) {
             </span>
           </p>
         )}
+
+        {/* Hidden entirely when there is no creator: created_by is nullable with nullOnDelete
+            (ADR-11), so a removed user leaves an authorless tool. The card already hides empty
+            groups rather than printing a placeholder. */}
+        {tool.creator && (
+          <p>
+            <span className="font-semibold text-text-primary">
+              {t("tools.createdByLabel")}:
+            </span>{" "}
+            <span className="text-text-secondary">{tool.creator.name}</span>
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-4 text-sm">
