@@ -2438,3 +2438,154 @@ the test would still pass if the fixture had attached nothing at all.
 - **A status-carrying error type so the UI could distinguish 403 from 404** — rejected: both mean the same
   thing to this screen (the card is stale, refetch), and a new error class is a new kind of thing for no
   behavioural difference.
+
+---
+
+## ADR-42: Production runs natively on the host under apache + PHP-FPM, not in Docker
+
+**Status:** Accepted
+
+**Context:** The deployment target is an internal Ubuntu 24.04 server that already hosts two Laravel
+projects behind apache with PHP-FPM 8.4. Docker is not installed on that machine at all. One of those two
+projects even carries its own `compose.yaml` and is nevertheless deployed natively — so the native path is
+not a theory here, it is a working pattern on this exact machine, available to be read and copied. Two
+operational facts also bear on the choice: the machine runs an active `ufw`, and it already exposes
+Postgres.
+
+**Decision:** Deploy natively. apache + PHP-FPM 8.4 serve the Laravel backend, Next.js runs as a host
+process, and no container runtime is introduced on the server. `backend/compose.yaml` stays exactly what
+it has always been — the **development** environment via Sail — and is untouched by this decision.
+
+**Consequences:** The machine keeps ONE deployment template instead of two, this project adds zero new
+subsystems to it, and there is an existing sibling project to copy the apache/PHP-FPM layout from rather
+than an arrangement to invent. The dev/prod boundary is now explicit: Sail in dev, host processes in prod.
+ADR-9 already placed the frontend outside Docker in development; in production both halves run natively,
+so the asymmetry ADR-9 describes does not exist there. Sail remains the only supported way to run the
+backend locally — nothing in this decision changes a single development command.
+
+**Alternatives considered:**
+
+- **Sail as it stands, in production** — rejected: it is a development environment, and it requires
+  Docker, which the server does not have.
+- **A separate production `compose.yaml`** — rejected on two counts, either of which is sufficient. It
+  still requires installing Docker, which means adding a third foreign APT repository to the machine. And
+  Docker's published ports bypass `ufw`: on a host with an active firewall that already exposes Postgres,
+  a container publishing a port would punch through that firewall silently, which is the kind of surprise
+  a deployment must not introduce.
+
+---
+
+## ADR-43: MySQL 8.4 on the server — ADR-5 stands, and its collation mismatch is reproduced on purpose
+
+**Status:** Accepted
+
+**Context:** The server has MySQL 8.4.11, installed from Oracle's own APT repository. That is the same
+version the development stack runs: `mysql:8.4` in `backend/compose.yaml` was checked and the dev
+container is also 8.4.11, so dev and prod agree down to the patch level rather than by assumption.
+
+**Decision:** Stay on MySQL. **ADR-5 remains in force and is not superseded.** The production database was
+created **without a collation clause**, so the server default (`utf8mb4_0900_ai_ci`) applies — which is
+precisely what happens in the dev container. Laravel then imposes `utf8mb4_unicode_ci` on the tables it
+creates. That database/table mismatch is **deliberately reproduced**, not repaired.
+
+**Consequences:** The one thing most likely to produce a difference in behaviour between the two
+environments — the database engine and its collation — is identical in both. The mismatch is real, and
+recording it here is the point: development has lived with it from the start, and no test in the suite
+covers the alternative. Aligning collations in production alone would make production the configuration
+nothing has ever been tested against, which is a worse position than a known, shared quirk. If the
+mismatch is ever resolved, it gets resolved in dev first and in both places together.
+
+**Alternatives considered:**
+
+- **MySQL 8.0 from Ubuntu's own repository** — rejected: a major-version drift from development, for the
+  sole benefit of avoiding a vendor repository. Oracle also moved 8.0 to sustaining support in April 2026.
+- **MariaDB** — rejected: it is not a drop-in equal of MySQL 8. The collations differ and so do the JSON
+  functions, and this schema stores category names as a JSON translation map (ADR-27), which puts those
+  functions directly on the critical path.
+
+---
+
+## ADR-44: The PostgreSQL migration is deferred deliberately, with its cost measured first
+
+**Status:** Accepted
+
+**Context:** The server is PostgreSQL-native: three databases already run on Postgres 16 and `pdo_pgsql`
+is present. Moving this project onto Postgres was therefore examined seriously rather than waved away, and
+its cost was measured rather than estimated from feeling. **14 of the 15 migrations are driver-clean.** The
+entire debt sits in one file — `database/migrations/2026_08_02_093000_change_categories_name_to_json.php`,
+which is MySQL dialect throughout (`ALTER TABLE ... DROP INDEX`, `MODIFY`, `AFTER`, `CHANGE`, and
+`JSON_UNQUOTE`) — plus two lines in `app/Models/Tool.php:63-64`, the `'like'` search, where `LIKE` is
+case-insensitive in MySQL and case-sensitive in PostgreSQL. The estimate is half a working day to a day and
+a half, and the uncertainty in it is concentrated in one place: the first run of the 166-test suite against
+a new driver.
+
+**Decision:** Defer it, on the principle of **one unknown at a time** — first a deployment that works,
+then a database migration against a base that is already stable. Two constraints are fixed now, while the
+reasoning is fresh: when it happens it happens **on a branch of THIS repository, not in a new one**, and
+the code becomes **driver-independent**, so that rolling back is a change of `.env` rather than a revert.
+
+**Consequences:** ADR-43 describes what actually runs; this entry is a recorded intention with a price tag,
+not work in flight. Its value is that the next person does not have to re-measure: the surface is two named
+places, and the risk is one test run. Nothing in the codebase was changed to prepare for it — no
+abstraction was added speculatively. When the migration is done, it gets its own ADR and this one is marked
+superseded.
+
+**Alternatives considered:**
+
+- **Migrating to PostgreSQL as part of the deployment** — rejected: it would put a driver change and a new
+  hosting model in flight simultaneously, so a failure in either would be diagnosed against the other.
+- **Starting a fresh repository for the Postgres version** — rejected in advance: it would fork the
+  history and the ADR log, and the two would drift.
+
+---
+
+## ADR-45: One origin behind apache — `/` to Next.js, `/api` to Laravel; the API base URL becomes relative
+
+**Status:** Accepted
+
+**Context:** In production apache serves both halves of the application under a single host:
+`https://tools.tombou.bg/` reaches Next.js and `https://tools.tombou.bg/api` reaches Laravel. That is one
+origin, where development has always had two — the frontend on `:3000` and the backend on `:80`.
+
+**Decision:**
+
+(1) **`NEXT_PUBLIC_API_URL=/api`, set in `frontend/.env.production`, which is committed.** A relative path
+is not a secret and belongs in the repository. `frontend/.gitignore` gained two explicit exceptions
+(`!.env.example`, `!.env.production`) so this is recorded in the repository rather than in a `git add -f`
+someone has to remember; the protection for `.env`, `.env.local` and the other local files is unchanged.
+The fallback in `src/lib/api.ts` (`"http://localhost/api"`) was deliberately left alone, so development
+keeps working with no env file at all.
+
+(2) **A relative value means the build contains no address.** The same build artefact runs on any host, and
+switching to HTTPS or replacing the certificate does not require rebuilding the frontend. This was checked
+before it was relied on: every consumer of `src/lib/api.ts` is a `'use client'` component — it must be,
+because the token lives in `localStorage` (ADR-17) — so there are no server-side calls, and a relative path
+has a browser to resolve it against in every case.
+
+(3) **`config/cors.php` is left exactly as it is, with `'allowed_origins' => ['http://localhost:3000']`
+hardcoded.** It is **inert in production** — one origin means the CORS middleware never fires — and
+**load-bearing in development**, where `:3000` calling `:80` is genuinely cross-origin. It reads no
+environment variable, by design, which is why this deployment added no `CORS_*` key anywhere. It looks like
+debt and is not: deleting it would break development and change nothing in production.
+
+(4) **Next.js binds to `127.0.0.1:3000` only.** It is not exposed on the network — apache is the only way
+in — and `ufw` was not touched, because its existing "Apache Full" rule already admits 80 and 443. The
+deployment therefore adds no listening port to the machine.
+
+**Consequences:** The browser makes same-origin requests in production, so CORS stops being a moving part
+there instead of becoming one more thing configured in two places. `backend/.env.example` documents no
+`SANCTUM_*` or `CORS_*` keys, because the project reads none from the environment — Bearer tokens only,
+per ADR-6. The single-origin layout also means a future reverse-proxy or certificate change is an apache
+concern alone and touches neither application's build.
+
+**Alternatives considered:**
+
+- **Flipping the default in `src/lib/api.ts` to `/api` and giving development a `.env.local` with the
+  absolute URL** — cleaner in principle, since the production value would then be the code's default and
+  the deployment would need no env file at all. Rejected on a practical fact: `.env.local` is gitignored,
+  so a fresh clone of the repository would break in development until someone knew to create it. The
+  committed `.env.production` puts the environment-specific value in the environment-specific file and
+  leaves the working default working.
+- **Two origins in production** (a separate `api.` subdomain) — rejected: it would need a second
+  certificate and would make `config/cors.php` load-bearing in production too, turning an inert file into
+  a live security boundary for no gain.
