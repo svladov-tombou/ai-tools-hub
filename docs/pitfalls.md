@@ -42,7 +42,8 @@ omit the field, and the old value silently survives. The type forces an explicit
 ## i18n
 
 `messages/bg/common.json` is the TYPE SOURCE for `t()`. A new key goes there FIRST or `tsc` fails.
-Keep `bg` and `en` in sync — check with the script in "Useful commands" below.
+Every OTHER dictionary is unchecked by the compiler — keep each one in sync with `bg` by hand,
+using the script in "Useful commands" below.
 A template key using a backtick string compiles ONLY if the interpolated value is a union of
 existing keys. Never fix such an error with `as never` or eslint-disable — that error is the
 check working.
@@ -57,22 +58,29 @@ Which key a rule reports under is not always its name: `Password::min(8)` report
 and `array:bg,en,fr` reports under plain `array` whether the value is not an array or merely has a
 disallowed key. Prove the key with a failing request before writing the translation.
 
-**Adding French touches FOUR places, and only two of them fail loudly.** The locale list is
+**Adding French touches FOUR places, and only ONE of them fails loudly.** The locale list is
 declared in four independent spots and nothing cross-checks them:
 
-1. `frontend/src/i18n/routing.ts` — `locales`
-2. `frontend/messages/fr/common.json` — the dictionary (`bg` stays the TYPE SOURCE; a missing key
-   here is a `tsc` error, so this one cannot be forgotten)
-3. `backend/lang/fr/validation.php` — the validation translations
-4. `backend/app/Http/Middleware/SetLocale.php` — `SUPPORTED`
+1. `frontend/src/i18n/routing.ts` — `locales`. The only loud one: list `fr` here with no
+   `messages/fr/common.json` and the dynamic import in `i18n/request.ts` throws on the first
+   `/fr` request.
+2. `frontend/messages/fr/common.json` — the dictionary. SILENT, and not in the way it looks.
+   `bg` is the TYPE SOURCE, but it is the type source for `bg` ALONE: `src/types/next-intl.d.ts`
+   imports `../../messages/bg/common.json` and nothing else, and `i18n/request.ts` loads the
+   reader's dictionary through a template literal — `import(\`../../messages/${locale}/common.json\`)`
+   — which TypeScript cannot resolve to a type. A key missing from `fr` (or from `en`) is therefore
+   NOT a `tsc` error. It surfaces at runtime as the key path rendered in place of the sentence.
+   The sync script in "Useful commands" is the only check that exists; run it after every new key.
+3. `backend/lang/fr/validation.php` — the validation translations.
+4. `backend/app/Http/Middleware/SetLocale.php` — `SUPPORTED`.
 
 Do only 1 and 2 and everything LOOKS finished: `/fr` routes, the navigation, the labels and the
 category names all render in French — category names have carried a `fr` translation since ADR-27
 and `StoreCategoryRequest` already accepts the key, so that half is French-ready today. But
 `SUPPORTED` rejects `fr`, the request falls back to the configured default, and every 422 comes back
 in ENGLISH under a French form. Nothing throws, `tsc` is clean, `npm run build` is clean and the
-whole Pest suite stays green — 3 and 4 are invisible to every check this project has. If a French UI
-is showing English validation errors, look at `SetLocale::SUPPORTED` first: adding `fr` to
+whole Pest suite stays green — 2, 3 and 4 are invisible to every check this project has. If a French
+UI is showing English validation errors, look at `SetLocale::SUPPORTED` first: adding `fr` to
 `lang/` without adding it to the whitelist is the same silent failure the other way round.
 
 ## Backend
@@ -344,21 +352,35 @@ Run it BEFORE `git add`, never after.
 
 ## Useful commands
 
-Dictionary sync check (run from `frontend/`):
+Dictionary sync check (run from `frontend/`). Walks every `messages/*/` and compares it against
+`bg`, which is the reference because it is the TYPE SOURCE. Prints per language what is missing
+and what `bg` does not have, so adding a third language does not need a new script:
 
     python3 - <<'PY'
-    import json
+    import json, pathlib
     def flat(o, p=""):
         out = set()
         for k, v in o.items():
             key = f"{p}.{k}" if p else k
             out |= flat(v, key) if isinstance(v, dict) else {key}
         return out
-    bg = flat(json.load(open("messages/bg/common.json")))
-    en = flat(json.load(open("messages/en/common.json")))
-    print("BG only:", sorted(bg - en) or "none")
-    print("EN only:", sorted(en - bg) or "none")
-    print("Total:", len(bg), "|", len(en))
+    def load(p):
+        return flat(json.load(p.open(encoding="utf-8")))
+    ref = load(pathlib.Path("messages/bg/common.json"))
+    print(f"bg (reference): {len(ref)} keys")
+    ok = True
+    for d in sorted(p for p in pathlib.Path("messages").iterdir()
+                    if p.is_dir() and p.name != "bg"):
+        f = d / "common.json"
+        if not f.exists():
+            print(f"{d.name}: NO common.json"); ok = False; continue
+        keys = load(f)
+        missing, extra = sorted(ref - keys), sorted(keys - ref)
+        print(f"{d.name}: {len(keys)} keys — "
+              f"{'in sync' if not missing and not extra else 'OUT OF SYNC'}")
+        for k in missing: print(f"  missing in {d.name}: {k}"); ok = False
+        for k in extra:   print(f"  not in bg ({d.name}): {k}"); ok = False
+    print("OK" if ok else "FAIL")
     PY
 
 Files over the size ceiling (run from repo root):
