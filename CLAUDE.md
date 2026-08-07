@@ -5,15 +5,23 @@ Internal company platform: teams share, categorize and discover AI tools.
 
 ## IMPORTANT: stop and ask the human
 Do not decide these yourself. Present options and wait. Asking costs seconds; a wrong choice here costs days.
+Anything NOT on this list is yours: decide it, report the choice, keep going.
+Judge by reversibility — uncommitted work on a branch undoes with one `git checkout`.
 1. Database schema changes beyond adding a nullable column (renames, type changes, relation changes).
 2. Anything touching permissions, policies, or who can see/do what.
 3. Adding an external dependency (composer or npm package).
 4. Changing an existing API response shape, field name, or route.
-5. Product behaviour: what a feature does, edge cases, user-visible text decisions.
+5. Product behaviour: WHAT a feature does, and any edge case whose answer a user would
+   notice. HOW is yours — naming, structure, the wording of UI strings and their keys.
 6. Introducing a NEW KIND of thing the project does not have yet (a new layer, a new state model, a new top-level directory). Placing a file inside an existing pattern is not this.
 7. Anything that revises a decision already recorded in `docs/decisions.md`.
-8. Any ambiguity in the task. Report it and stop. Never invent the missing requirement.
+8. Ambiguity about WHAT is wanted: report it and stop. Never invent a missing
+   requirement. Ambiguity about HOW: choose what best fits the existing code, name it,
+   and continue.
 When unsure whether something qualifies, ask.
+The `ask` and `deny` rules in `.claude/settings.json` are enforced even under
+`--dangerously-skip-permissions` (verified 2026-08-07). Never route around a gated path
+with `python3`, `sed` or `cat >`. If a gate blocks work you think is correct, say so and wait.
 
 ## IMPORTANT: i18n — the most expensive trap here
 `messages/bg/common.json` is the TYPE SOURCE for `t()`. A key must exist there first or `tsc` fails.
