@@ -375,3 +375,95 @@ it('leaves an untranslated rule in English instead of failing', function () {
 
     expect($errors->first('flag'))->toBe('The flag field must be true or false.');
 });
+
+/**
+ * French (ADR-50). Four distinct rules rather than one, because a single case would pass
+ * just as well against a file that happened to translate only `required` — these fail
+ * separately if any one message, or the `fr` entry in SetLocale::SUPPORTED, is missing.
+ */
+dataset('french rules', [
+    'required' => [
+        function () {
+            localeActingAs('owner');
+
+            return ['post', '/api/tools', ['description' => 'x', 'url' => 'https://a.test']];
+        },
+        'name',
+        'Le champ nom est obligatoire.',
+    ],
+    'url' => [
+        function () {
+            localeActingAs('owner');
+
+            return ['post', '/api/tools', ['name' => 'A', 'description' => 'x', 'url' => 'pas-une-adresse']];
+        },
+        'url',
+        "Le champ adresse de l'outil doit être une adresse (URL) valide.",
+    ],
+    'max (string)' => [
+        function () {
+            localeActingAs('owner');
+            $tool = localeTool();
+
+            return ['post', "/api/tools/{$tool->id}/comments", ['body' => str_repeat('é', 2001)]];
+        },
+        'body',
+        'Le champ commentaire ne peut pas dépasser 2000 caractères.',
+    ],
+    'in' => [
+        function () {
+            localeActingAs('owner');
+
+            return ['post', '/api/tools', [
+                'name' => 'A',
+                'description' => 'x',
+                'url' => 'https://a.test',
+                'difficulty' => 'très-difficile',
+            ]];
+        },
+        'difficulty',
+        'La valeur sélectionnée pour difficulté est invalide.',
+    ],
+]);
+
+it('answers 422 in French when the request asks for French', function (Closure $case, string $field, string $expected) {
+    [$method, $path, $payload] = $case();
+
+    $response = $this->withHeader('Accept-Language', 'fr')->json($method, $path, $payload);
+
+    $response->assertStatus(422);
+
+    $errors = $response->json('errors');
+
+    expect(array_key_exists($field, $errors))->toBeTrue("no 422 errors reported for `{$field}`");
+    expect($errors[$field])->toContain($expected);
+})->with('french rules');
+
+it('resolves a region-only French tag', function () {
+    localeActingAs('owner');
+
+    // `fr-FR` with no bare `fr` behind it: Symfony returns ["fr_FR"] and nothing else, so
+    // this fails unless SetLocale strips the region before matching the whitelist.
+    $this->withHeader('Accept-Language', 'fr-FR')
+        ->postJson('/api/tools', ['description' => 'x', 'url' => 'https://a.test'])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.name.0', 'Le champ nom est obligatoire.');
+});
+
+it('names the field in French rather than by its wire name', function () {
+    localeActingAs('owner');
+    $tool = localeTool();
+
+    // The `attributes` block of lang/fr/validation.php. Without it the sentence is built
+    // around the English column name, which is the failure this asserts against directly:
+    // translating the rules and forgetting the attributes still yields a French sentence.
+    $response = $this->withHeader('Accept-Language', 'fr')
+        ->postJson("/api/tools/{$tool->id}/comments", [])
+        ->assertStatus(422);
+
+    expect($response->json('errors.body.0'))
+        ->toBe('Le champ commentaire est obligatoire.')
+        ->not->toBe('Le champ body est obligatoire.');
+
+    $response->assertJsonPath('message', 'Le champ commentaire est obligatoire.');
+});

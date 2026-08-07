@@ -57,11 +57,15 @@ the repo.
 `git pull`. If that file ever changes in the repo too, the pull conflicts
 mid-deploy.
 
-**14. `ValidationLocaleTest.php` is 363 lines against a ceiling of ~300.** Left
-whole on purpose: the file is one dataset plus the tests that consume it, and
-splitting the dataset into `tests/Datasets/` would put the cases a file away
-from the assertions that explain them. Revisit if a second locale test file
-appears.
+**14. `ValidationLocaleTest.php` is 469 lines against a ceiling of ~300.** It
+was 363 before French was added. Left whole on purpose so far: the file is two
+datasets plus the tests that consume them, and moving the cases to
+`tests/Datasets/` would put them a file away from the assertions that explain
+them. A real split has to extract `localeActingAs` and `localeTool` into
+`tests/Pest.php` or a trait first — Pest loads every test file into one process,
+so a second file defining them is a fatal redeclare.
+`ValidationLanguageParityTest.php` is a separate file but shares nothing with
+this one, so it does not count as the trigger.
 
 **15. `array:bg,en,fr` cannot say which key was wrong.** A disallowed key and a
 value that is not an array both report under plain `validation.array`, so the

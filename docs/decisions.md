@@ -2939,3 +2939,92 @@ error message, so it is translated by the same mechanism. The frontend renders `
   Laravel rewords one.
 - **`$request->getPreferredLanguage(['bg', 'en'])`** — rejected, see (3). It returns the first
   entry when nothing matches, so `Accept-Language: de` would be answered in Bulgarian.
+
+## ADR-50: French validation messages land on the backend BEFORE the frontend, because they are inert until `routing.ts` changes
+
+**Status:** Accepted
+
+**Context:** ADR-49 paid the 422-in-English debt for Bulgarian and left French explicitly open:
+"until `lang/fr/` exists and `fr` joins the whitelist — two lines, in a phase of its own." This is
+that phase, and it is backend-only on purpose. `docs/pitfalls.md` lists four independent places
+that declare the locale list, with nothing cross-checking them; reconnaissance before this part
+also corrected that note, which had claimed the frontend dictionary was compiler-checked when it
+is not. Only `routing.ts` can make the application emit `Accept-Language: fr` at all.
+
+**Decision:**
+
+(1) **`lang/fr/validation.php` mirrors `lang/bg/validation.php` exactly — the same 16 rules and
+the same 23 attribute names.** It is written by hand and PARTIAL for the reasons in ADR-49 (1);
+nothing about that argument is language-specific. The two files answer for the same eleven Form
+Requests, so a key in one and not the other is a bug in whichever is shorter.
+
+(2) **The key sets are asserted programmatically, not compared by eye.** Both files were flattened
+and diffed as sets before the French file was written and again after. Twenty-three attribute
+names in two alphabets is precisely the kind of list where a human reading down two columns
+confirms what they expect to see. The check is also a standing test: `ValidationLanguageParityTest`
+walks `lang/*/` and asserts every language carries `bg`'s key set, in both sections, naming the key
+and the language it is missing from. It walks the directory rather than listing locales, so it does
+not become one more place a fourth language has to be registered.
+
+(3) **`SetLocale::SUPPORTED` becomes `['bg', 'en', 'fr']` in the SAME change as the language
+file, ahead of the frontend.** The two halves are inseparable in both directions and both
+disagreements are silent: `lang/fr/` without the whitelist entry answers French requests in
+English, and the whitelist entry without `lang/fr/` does the same. Splitting them across two
+phases would leave a window in which the repository is wrong in a way nothing detects. The
+addition is inert until the frontend changes: no client sends `Accept-Language: fr` today, so no
+existing response moves. The tests reach it by setting the header directly.
+
+(4) **The apostrophe strings are double-quoted, not backslash-escaped.** Two values contain one
+(`n'est`, `l'outil`). `CategorySeeder` already writes `"Génération d'images"` for exactly this
+situation, so the file follows that precedent; single quotes elsewhere, as in the Bulgarian file.
+
+(5) **Six tests, in the existing `ValidationLocaleTest.php` rather than a new file.** Four
+distinct rules (`required`, `url`, `max.string`, `in`) under `Accept-Language: fr`, one
+region-only `fr-FR` tag, and one that proves the `attributes` block: an empty comment must answer
+"Le champ commentaire est obligatoire." and not "Le champ body est obligatoire." — the failure
+mode where the rules are translated and the field names are forgotten still produces a French
+sentence, so asserting merely "it is in French" would not catch it. They live in the existing file
+because its helpers (`localeActingAs`, `localeTool`) are plain functions in a single Pest process;
+a second file relying on them would depend on load order. The parity check of (2) is the exception
+and gets its own file: it needs none of those helpers, no HTTP and no database, and it asserts a
+property of two files on disk rather than a response.
+
+(6) **`routing.ts`, `messages/fr/` and `src/lib/api.ts` are untouched.** The frontend half is a
+separate part. Until it lands, `/fr` is not a route and the French dictionary does not exist.
+
+**Evidence — the tests were proven to fail before they were trusted:**
+
+- With `fr` removed from `SUPPORTED`, all six new tests fail; the region-only case reports
+  `'The name field is required.'` against the expected French.
+- With the single `'body' => 'commentaire'` line removed from the attributes block, exactly two
+  fail, and the attributes test reports `'Le champ body est obligatoire.'` — the sentence (5)
+  names. Both mutations were reverted from backups and the key/string check re-run afterwards.
+- Full suite: 209 passed, 588 assertions (203 before this part).
+
+**Consequences:**
+
+- **ADR-49 (4) said `fr` is "deliberately absent" from the whitelist. That clause is now spent —
+  its stated condition (`lang/fr/` exists) is met.** The rest of ADR-49 stands unchanged and is
+  not superseded; this is the follow-through ADR-49 scheduled, not a reversal of it.
+- The price named in ADR-49 now applies twice over: a new rule in a Form Request produces an
+  English sentence in a Bulgarian form AND in a French one, silently. Adding a rule now has two
+  second steps.
+- `bg` and `fr` can no longer drift apart WITHOUT the suite going red, but the parity test compares
+  the two files to each other and not to the Form Requests. Add a rule and forget BOTH languages and
+  it stays green: the pair is consistent and equally incomplete. That gap is ADR-49's, unchanged —
+  the tests cover the messages that exist, not the ones that should.
+- Nothing on the frontend can reach any of this yet. A French UI is still English-only in its
+  validation until `routing.ts` lists the locale — which is the same silent failure ADR-49
+  described, now waiting on the other side.
+
+**Alternatives considered:**
+
+- **Add `fr` to `SUPPORTED` later, with the frontend** — rejected, see (3). It would leave
+  `lang/fr/` and the whitelist disagreeing for a whole phase, undetectably.
+- **Do the frontend first** — rejected. Listing `fr` in `routing.ts` without `messages/fr/` throws
+  on the first `/fr` request, and with it, every 422 comes back in English under a French form.
+  The backend half is the only one that can land alone without a visible defect.
+- **A new `ValidationLocaleFrenchTest.php`** — rejected, see (5). Pest loads every test file into
+  one process; the shared helpers would make the new file depend on load order.
+- **Publish Laravel's full French file** — rejected for the same reason ADR-49 (1) rejected it for
+  Bulgarian, and more so: it would make the two language files structurally different.

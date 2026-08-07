@@ -23,11 +23,16 @@ class SetLocale
     /**
      * Locales this application has translations for. Not read from config: a locale belongs
      * here once `lang/<locale>/` exists, and that is a fact about the repository rather than
-     * about the environment. French is deliberately absent — category names already carry a
-     * `fr` translation (ADR-27), but there is no `lang/fr/` yet, so accepting `fr` would only
-     * produce English messages under a French UI.
+     * about the environment. `en` has no `lang/en/` because it IS the framework's own
+     * language; `bg` and `fr` each have a hand-written partial file (ADR-49).
+     *
+     * `fr` was added together with `lang/fr/validation.php`, ahead of the frontend (ADR-50).
+     * It is inert until `routing.ts` learns the locale: nothing sends `Accept-Language: fr`
+     * before then, so this entry changes no existing response. It is listed here rather than
+     * later so that `lang/fr/` and the whitelist can never disagree — that disagreement is
+     * silent in both directions, and it is the trap `docs/pitfalls.md` describes.
      */
-    private const SUPPORTED = ['bg', 'en'];
+    private const SUPPORTED = ['bg', 'en', 'fr'];
 
     public function handle(Request $request, Closure $next): Response
     {
