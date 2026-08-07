@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getTool } from "@/lib/api";
 import { localizedName } from "@/lib/localized-name";
 import { ADMIN_ROLES, hasAnyRole } from "@/lib/roles";
+import { ToolComments } from "@/components/tool-comments";
 import type { Tool } from "@/types";
 
 /** One "Label: value" row. The card spells each block out; here the shape repeats five times. */
@@ -161,6 +162,8 @@ export function ToolDetail({ id }: { id: number }) {
           <ExternalLink href={tool.video_url}>{t("tools.links.video")}</ExternalLink>
         )}
       </div>
+
+      <ToolComments toolId={tool.id} />
     </div>
   );
 }

@@ -201,6 +201,21 @@
       "backToList": "Back to the list",
       "loading": "Loading…",
       "loadError": "The tool could not be loaded."
+    },
+    "comments": {
+      "heading": "Comments",
+      "totalCount": "{count} comments total",
+      "loading": "Loading comments…",
+      "loadError": "Something went wrong loading the comments. Please try again.",
+      "empty": "No comments yet.",
+      "newLabel": "New comment",
+      "placeholder": "Write a comment…",
+      "counter": "{count} / 2000",
+      "immutableHint": "A comment cannot be edited or deleted.",
+      "submit": "Publish",
+      "submitting": "Publishing…",
+      "genericError": "Something went wrong while publishing. Please try again.",
+      "deletedAuthor": "Deleted user"
     }
   },
   "profile": {

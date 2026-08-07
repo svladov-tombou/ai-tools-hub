@@ -2752,3 +2752,81 @@ is safe to return as-is.
 - **`datetime(3)` timestamps to make ties rare instead of breaking them** — rejected. It makes the
   failure less frequent rather than impossible, and it is a schema change to every future comment for a
   problem one ORDER BY term solves outright.
+
+---
+
+## ADR-48: Comments in the tool page — a form above the list, and a first page always re-fetched
+
+**Status:** Accepted
+
+**Context:** ADR-47 built the create-and-read comment endpoints; ADR-46 built the page they belong on and
+said in as many words that the description was given a full screen because comments would follow. This
+phase is the frontend for them, and touches no backend file.
+
+**Decision:**
+
+(1) **A `<section>` at the very bottom of the tool page**, after the metadata and the external links,
+separated by a top border. Order inside it: heading, then the form, then the list. The form sits ABOVE
+the list because the list is newest-first — the field is next to the place the result will appear.
+
+(2) **Three new components, none of them inside `tool-detail.tsx`.** `tool-comments.tsx` (loads and
+orchestrates, 84 lines), `comment-form.tsx` (80), `comment-list.tsx` (44). `tool-detail.tsx` was already
+over the component ceiling at 166 lines (ADR-46) and grew by exactly three: one import, one blank line and
+one `<ToolComments toolId={tool.id} />`.
+
+(3) **A successful post re-fetches the first page and DISCARDS the created comment the API returned.**
+Splicing the response into the list in memory is cheaper and is wrong: it renders a first page that is a
+lie the moment somebody else commented in between, and it would be nonsense if the reader were on a later
+page. The re-fetch is the same `reloadToken` bump `tools-list.tsx` uses, which is also the shape that
+satisfies `react-hooks/set-state-in-effect` (pitfalls 4a).
+
+(4) **The button reads „Публикувай", not „Запази"**, and a line under the field states that a comment
+cannot be edited or deleted. The label and the line exist because the backend has no update and no delete
+route (ADR-47(1)): the interface should say so before the click, not leave it to be discovered.
+
+(5) **The field has NO `maxLength`, deliberately diverging from the tool description field**, which caps
+at 5000 in the DOM. The 2000-character rule is the backend's, and capping the textarea would make the
+limit unreachable from the UI — which also makes the 422 path unverifiable in a browser. The counter shows
+the overrun instead (it reads `2001 / 2000`) and the server's message appears under the field. Counter
+style, placement and wording follow `tool-form.tsx`, which already had one; no third style was invented.
+
+(6) **50 per page, and the same scheme as `tools-list.tsx`** — request the first page, render it, print
+the total underneath. That list has no page controls either, so none were invented here. `getComments`
+takes an optional `page`, which nothing in the UI passes yet; it is the one parameter of this phase that
+has a writer and no caller, and it is documented as such rather than left to be discovered.
+
+(7) **`Comment.user` is `{ id, name } | null`.** `user_id` is `nullOnDelete` (ADR-47(7)), so a removed
+user leaves a comment with no author. An authorless comment renders the dictionary string „Изтрит
+потребител" — never blank, and never the word `null`.
+
+(8) **Dates are formatted with `Intl.DateTimeFormat(locale)`, built once per locale in a `useMemo`.** No
+date library was added. `format-roles.ts` already reaches for `Intl` with the active locale, so this is
+the project's existing answer to the same question rather than a new one.
+
+**Consequences:**
+
+- The 2000-character limit now lives in exactly one place, the backend. The frontend reports it and does
+  not enforce it. That is the opposite trade-off from the description field and it is deliberate: a limit
+  enforced in two places is a limit that can disagree with itself.
+- Validation messages under the field arrive from Laravel in English against a Bulgarian UI — the same
+  debt ADR-23 recorded for the tool form, unchanged and not made worse here.
+- `src/lib/api.ts` was extended by appending only; nothing above line 505 was touched. It is a
+  permission-gated path, and it was edited through the gate rather than rewritten around it.
+- A rejected comment keeps its text in the field. Clearing happens only on the success path, so a 422
+  never costs the author what they typed.
+- There is still no way to reach comments beyond the first fifty. Acceptable while no tool has fifty; the
+  fix is page controls, and it is the same missing feature as on the tools list, so it should be solved
+  once for both rather than twice differently.
+
+**Alternatives considered:**
+
+- **Optimistically prepending the new comment** — rejected, see (3). The only thing it buys is one avoided
+  request; what it costs is a list that can be wrong without ever looking wrong.
+- **`maxLength={2000}` on the textarea, mirroring the description field** — rejected, see (5). It hides
+  the failure instead of reporting it, and it makes the rule untestable from the outside.
+- **Rendering comments inside `tool-detail.tsx`** — rejected on the file ceiling and on responsibility: a
+  screen that reads one tool and a section that loads a paginated list are two jobs.
+- **A date library (`date-fns`, `dayjs`) for relative timestamps** — rejected. A new npm dependency is an
+  ask-first decision, and `Intl` already does absolute dates correctly in both locales.
+- **Comment editing within a grace period** — out of scope by ADR-47(1); the backend has no route for it,
+  and adding one is not a frontend phase.

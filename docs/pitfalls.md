@@ -249,6 +249,22 @@ and needs no `element.click()` workaround; anything that depends on a React hand
 form submits) still does. When a link's selector is ambiguous — the navbar and the page can both point at
 `/tools` — scope it (`a.text-accent[href=...]`) rather than taking the first match, per 3e.
 
+**3g. Filling a React-controlled field in the MCP browser needs the NATIVE setter, or the form submits
+empty.** 3d notes that `fill` makes raw DOM values stick. What it does not say is that React never hears
+about them: `el.value = 'text'` (and `fill`) sets the DOM property while React's state stays `""`, so the
+character counter keeps reading 0, and the submit handler — which sends STATE, not the DOM — posts an
+empty body. It looks exactly like a broken form. The shape that works, because it is what React's own
+`onChange` listens for:
+
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(el, 'text');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+
+Use `HTMLInputElement.prototype` for an `<input>`. **Assert on a rendered consequence of the state, not on
+`el.value`** — a character counter, a disabled button, an error that should clear. `el.value` is true for
+the broken case too, which is what makes it a useless check. Submit afterwards with `element.click()` per
+3d; the handler then reads the state React actually has.
+
 **4. `git status` collapses NEW DIRECTORIES.** Use `git status --short -uall` or you cannot see
 what is about to be committed. Paths with square brackets need QUOTES in `git add`.
 Never `git add .`.

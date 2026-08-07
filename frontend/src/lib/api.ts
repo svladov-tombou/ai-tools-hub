@@ -505,3 +505,68 @@ export async function deactivateUser(id: number): Promise<AdminUser> {
 
   return response.json();
 }
+
+export type Comment = {
+  id: number;
+  body: string;
+  created_at: string;
+  // NULLABLE on purpose: `user_id` is nullOnDelete (ADR-47), so removing a user leaves the
+  // comment standing with no author rather than deleting words other people replied to.
+  user: { id: number; name: string } | null;
+};
+
+/**
+ * The same envelope shape as ToolsPage: the API returns Laravel's paginator, and the
+ * snake_case keys are renamed here so no component has to know that.
+ */
+export type CommentsPage = {
+  comments: Comment[];
+  currentPage: number;
+  lastPage: number;
+  total: number;
+};
+
+type CommentsEnvelope = {
+  data: Comment[];
+  current_page: number;
+  last_page: number;
+  total: number;
+};
+
+export async function getComments(toolId: number, page?: number): Promise<CommentsPage> {
+  const query = page ? `?page=${page}` : "";
+  const response = await request(`/tools/${toolId}/comments${query}`);
+
+  if (!response.ok) {
+    throw new Error("Unable to load comments. Please try again.");
+  }
+
+  const data: CommentsEnvelope = await response.json();
+
+  return {
+    comments: data.data,
+    currentPage: data.current_page,
+    lastPage: data.last_page,
+    total: data.total,
+  };
+}
+
+export async function createComment(toolId: number, body: string): Promise<Comment> {
+  const response = await request(`/tools/${toolId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+
+  // The 2000-character limit and the empty-body rule are enforced by the backend, so both
+  // arrive here as a 422 and surface under the field — the shape every other form uses.
+  if (response.status === 422) {
+    const data = await response.json();
+    throw new ValidationError(data.message ?? "Validation failed.", data.errors ?? {});
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to publish the comment. Please try again.");
+  }
+
+  return response.json();
+}
