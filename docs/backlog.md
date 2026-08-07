@@ -13,10 +13,6 @@ parameter that nothing calls (ADR-48). At 60 comments the screen says
 "60 total" and shows 50. Copied from `tools-list.tsx`, which has the same gap
 but hurts later.
 
-**2. Laravel validation errors are in English.** "The body field is required."
-on a Bulgarian screen. Fix this BEFORE adding French, or a French user sees two
-foreign languages at once. Needs `lang/` directories in `backend/`.
-
 **3. `maxLength={5000}` on the description truncates silently on paste.** Paste
 6000 characters, the field keeps 5000, nothing says so. The comment field
 deliberately has no `maxLength` for this reason — the two forms now differ.
@@ -60,6 +56,17 @@ the repo.
 **13. `.gitignore` is modified locally on the server** (`M`). `deploy.sh` runs
 `git pull`. If that file ever changes in the repo too, the pull conflicts
 mid-deploy.
+
+**14. `ValidationLocaleTest.php` is 363 lines against a ceiling of ~300.** Left
+whole on purpose: the file is one dataset plus the tests that consume it, and
+splitting the dataset into `tests/Datasets/` would put the cases a file away
+from the assertions that explain them. Revisit if a second locale test file
+appears.
+
+**15. `array:bg,en,fr` cannot say which key was wrong.** A disallowed key and a
+value that is not an array both report under plain `validation.array`, so the
+Bulgarian message has to be true for both and says only "must be an array".
+A specific message would need `custom.name.array` — out of scope in ADR-49.
 
 ## Decided against
 
