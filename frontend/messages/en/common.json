@@ -196,6 +196,11 @@
       "loadError": "The tool could not be loaded.",
       "validationFailed": "Please correct the highlighted fields.",
       "genericError": "Something went wrong while saving. Please try again."
+    },
+    "detail": {
+      "backToList": "Back to the list",
+      "loading": "Loading…",
+      "loadError": "The tool could not be loaded."
     }
   },
   "profile": {

@@ -28,7 +28,14 @@ export function ToolCard({
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-6">
       <div className="flex items-start justify-between gap-2">
-        <h2 className="text-lg font-medium text-text-primary">{tool.name}</h2>
+        <h2 className="text-lg font-medium text-text-primary">
+          {/* Only the name and the description link through to the detail page. The card
+              itself must NOT become one big anchor: it already contains the edit Link, the
+              delete button and three external <a>, and an <a> inside an <a> is invalid HTML. */}
+          <Link href={`/tools/${tool.id}`} className="hover:underline">
+            {tool.name}
+          </Link>
+        </h2>
         <div className="flex shrink-0 items-center gap-2">
           {tool.status === "draft" && (
             <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
@@ -56,7 +63,12 @@ export function ToolCard({
         </div>
       </div>
 
-      <p className="text-sm text-text-secondary line-clamp-3">{tool.description}</p>
+      <Link
+        href={`/tools/${tool.id}`}
+        className="line-clamp-3 text-sm text-text-secondary hover:underline"
+      >
+        {tool.description}
+      </Link>
 
       <div className="flex flex-col gap-2 text-sm">
         {tool.categories.length > 0 && (

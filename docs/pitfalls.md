@@ -227,6 +227,14 @@ manual pass by a human**. If a browser check is genuinely needed, scope the sele
 (`card.querySelector(...)` — never `document.querySelectorAll(...)[0]`) and act only on a record created
 for that purpose.
 
+**3f. `browser_click` DOES work on a plain link, unlike on a button (3d).** Navigating the tool
+card's name and description links landed both times — the URL changed and the target page rendered. That
+is not a counter-example to 3d: a `Link` renders a real `<a href>`, and the browser follows the href on its
+own whether or not React's own click handler ran. So a navigation check can be driven with `browser_click`
+and needs no `element.click()` workaround; anything that depends on a React handler (buttons, checkboxes,
+form submits) still does. When a link's selector is ambiguous — the navbar and the page can both point at
+`/tools` — scope it (`a.text-accent[href=...]`) rather than taking the first match, per 3e.
+
 **4. `git status` collapses NEW DIRECTORIES.** Use `git status --short -uall` or you cannot see
 what is about to be committed. Paths with square brackets need QUOTES in `git add`.
 Never `git add .`.

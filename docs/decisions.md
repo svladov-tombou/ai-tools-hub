@@ -2589,3 +2589,78 @@ concern alone and touches neither application's build.
 - **Two origins in production** (a separate `api.` subdomain) — rejected: it would need a second
   certificate and would make `config/cors.php` load-bearing in production too, turning an inert file into
   a live security boundary for no gain.
+
+---
+
+## ADR-46: A read-only tool page at `/tools/[id]`, entered from the card's name and description
+
+**Status:** Accepted
+
+**Context:** Until now a tool could only be read through its card in the list, where the description is
+clamped to three lines. The description is allowed 5000 characters (ADR-22) and comments will later be
+attached to a tool, so there was no screen on which a tool could be read in full or pointed at.
+
+**Decision:**
+
+(1) **A page, not a modal**, at `/tools/[id]`, reusing the ADR-23 reasoning verbatim: a 5000-character
+description plus the comments that will sit under it need a full screen, and both want a shareable
+address. Verified as a shareable address rather than assumed — `/en/tools/20` was opened by direct
+navigation, not by a click, and rendered the whole tool.
+
+(2) **Exactly two click targets on the card: the name and the description.** The card is deliberately NOT
+wrapped in a `Link`. It already contains an edit `Link`, a delete `button` and three external `<a>`, and
+an `<a>` inside an `<a>` is invalid HTML — the browser would reparent the nested anchors and the result
+is not a styling bug but a broken DOM. Checked in the browser rather than reasoned about:
+`card.querySelector('a a')` returns null, and the card element is still a `DIV` with five anchors under it.
+
+(3) **`line-clamp-3` stays on the card.** The clamp is pure CSS: the full description is in the DOM and in
+the payload either way, so the list truncates visually and the page does not have to ask for anything the
+list did not already have. Measured: the card's description element reports `clientHeight` 60px against
+`scrollHeight` 260px at a 20px line-height — three lines shown out of thirteen.
+
+(4) **The description is plain text, rendered with `whitespace-pre-wrap break-words`.** No Markdown
+renderer, which would be a new dependency and an ask-first decision. `pre-wrap` keeps the author's own
+line breaks, including blank lines between paragraphs, and `break-words` stops a long unbroken token from
+widening the page.
+
+(5) **The page is a client component wrapped in a server page**, mirroring `/tools/[id]/edit` exactly: the
+server page awaits `params`, calls `setRequestLocale` and renders `<ToolDetail id={...} />`, which loads
+through the existing `getTool(id)`. A server component cannot fetch the tool, because the token lives in
+`localStorage` (ADR-6). No new API function was written and `src/lib/api.ts` was not touched.
+
+(6) **No `generateStaticParams`.** Tools are created after the build, so a prerendered set of ids would be
+wrong the moment someone adds a tool.
+
+(7) **An edit link for whoever may edit, and no delete button.** The visibility rule is copied from the
+card — author, or an administrator — and is UX only; `ToolPolicy` remains the boundary. Delete is
+deliberately absent: it is irreversible, it already exists on the card where the list can absorb the
+row's disappearance (ADR-41), and a delete on a detail page raises a question this phase does not answer
+— where the user lands afterwards.
+
+**Consequences:**
+
+- `tool-detail.tsx` is 166 lines against a 150-line component ceiling, and `tool-card.tsx` went from 155
+  to 167. Both are left as they are. The detail file is one flat render with no logic hidden in it; the
+  only split available is to lift the five `MetaRow`s and the external links into a file used once, which
+  moves lines without making either file easier to read. Recorded rather than silently ignored.
+- The metadata block is duplicated between the card and the page, in a compacted form. Extracting a shared
+  component was rejected as a refactor of code that works and was not part of this task; if a third reader
+  of the same fields appears, that is the moment to extract it.
+- The back link points at `/tools` with no query string, so returning from the page loses any filters that
+  were active. Consistent with the ADR-23 decision not to build a filter-carrying chain against a guess.
+- A dictionary namespace `tools.detail` was added (`backToList`, `loading`, `loadError`) in both `bg` and
+  `en`. `loading`/`loadError` duplicate the wording of two `tools.form.*` keys deliberately: the detail
+  screen is not a form, and sharing a key would tie its text to the edit form's.
+
+**Alternatives considered:**
+
+- **Wrapping the whole card in a `Link`** — rejected on the invalid-HTML ground in (2). The alternative
+  that would make it legal is an overlay pseudo-element with the action controls raised above it; that is
+  real complexity for a card that has four other controls.
+- **Dropping `line-clamp-3` now that a full view exists** — rejected: the clamp is what keeps the grid
+  rows even, and it is the reason the detail page is worth opening.
+- **Passing the already-loaded `Tool` from the card into the page** — rejected for the same reason as in
+  ADR-24: the URL must work on its own, on refresh and when shared.
+- **A Markdown renderer for the description** — rejected. It is a new npm dependency (ask-first) and it
+  would change what the 5000-character limit means, since the stored text would no longer be what is
+  displayed.
