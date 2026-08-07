@@ -1,0 +1,239 @@
+{
+  "app": {
+    "title": "AI Tools Hub"
+  },
+  "buttons": {
+    "save": "Enregistrer",
+    "cancel": "Annuler"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "tools": "Outils",
+    "profile": "Profil",
+    "settings": "Paramètres",
+    "openMenu": "Ouvrir le menu",
+    "closeMenu": "Fermer le menu",
+    "logout": "Déconnexion",
+    "placeholderUser": "{name} ({roles})"
+  },
+  "roles": {
+    "owner": "Propriétaire",
+    "pm": "Chef de projet",
+    "manager": "Responsable",
+    "employee": "Employé"
+  },
+  "departments": {
+    "marketing": "Marketing",
+    "accounting": "Comptabilité",
+    "it": "Informatique",
+    "projects": "Projets",
+    "commercial": "Commercial",
+    "sales": "Ventes",
+    "network": "Réseau de magasins",
+    "production": "Production",
+    "customer_support": "Service client",
+    "administration": "Administration",
+    "tender": "Marchés publics",
+    "telesales": "Vente par téléphone"
+  },
+  "dashboard": {
+    "greeting": "Bonjour {name} !",
+    "rolesLabel": "Vos rôles : {roles}",
+    "cards": {
+      "tools": {
+        "title": "Outils",
+        "description": "Parcourez et découvrez les outils IA partagés par les équipes."
+      },
+      "profile": {
+        "title": "Profil",
+        "description": "Consultez votre profil et les rôles qui vous sont attribués."
+      }
+    }
+  },
+  "auth": {
+    "loginTitle": "Connexion",
+    "emailLabel": "Adresse e-mail",
+    "passwordLabel": "Mot de passe",
+    "submit": "Se connecter",
+    "submitting": "Connexion…",
+    "invalidCredentials": "Adresse e-mail ou mot de passe incorrect.",
+    "genericError": "Une erreur est survenue. Veuillez réessayer."
+  },
+  "settings": {
+    "title": "Paramètres",
+    "users": {
+      "title": "Utilisateurs",
+      "loading": "Chargement des utilisateurs…",
+      "loadError": "Une erreur est survenue lors du chargement des utilisateurs. Veuillez réessayer.",
+      "empty": "Aucun utilisateur pour le moment.",
+      "addButton": "Ajouter un utilisateur",
+      "newTitle": "Nouvel utilisateur",
+      "editTitle": "Modification de {name}",
+      "closeButton": "Fermer",
+      "detailsSection": "Informations",
+      "rolesSection": "Rôles",
+      "passwordSection": "Nouveau mot de passe",
+      "nameLabel": "Nom",
+      "emailLabel": "Adresse e-mail",
+      "departmentLabel": "Service",
+      "departmentNone": "Aucun service",
+      "rolesLabel": "Rôles",
+      "passwordLabel": "Mot de passe",
+      "passwordConfirmLabel": "Confirmation du mot de passe",
+      "passwordHint": "Au moins 8 caractères. Communiquez-le à l'utilisateur — aucun e-mail n'est envoyé.",
+      "activeBadge": "Actif",
+      "inactiveBadge": "Désactivé",
+      "editButton": "Modifier",
+      "activateButton": "Activer",
+      "deactivateButton": "Désactiver",
+      "deactivateConfirm": "Désactiver « {name} » ? L'accès sera révoqué immédiatement et ses sessions en cours seront interrompues.",
+      "selfDeactivateHint": "Vous ne pouvez pas désactiver votre propre compte.",
+      "selfRolesNotice": "Vous ne pouvez pas modifier vos propres rôles. Demandez à un autre administrateur.",
+      "ownerProtectedHint": "Seul un propriétaire peut gérer un utilisateur ayant le rôle Propriétaire.",
+      "ownerRoleHint": "Seul un propriétaire peut attribuer le rôle Propriétaire.",
+      "userCreated": "L'utilisateur a été créé.",
+      "detailsSaved": "Les informations ont été enregistrées.",
+      "rolesSaved": "Les rôles ont été enregistrés.",
+      "passwordSaved": "Le mot de passe a été modifié.",
+      "validationFailed": "Vérifiez les champs et réessayez.",
+      "saveError": "Une erreur est survenue lors de l'enregistrement. Veuillez réessayer.",
+      "statusError": "Une erreur est survenue lors de la modification de l'accès. Veuillez réessayer."
+    },
+    "categories": {
+      "title": "Catégories",
+      "loading": "Chargement des catégories…",
+      "loadError": "Une erreur est survenue lors du chargement des catégories. Veuillez réessayer.",
+      "empty": "Aucune catégorie pour le moment.",
+      "addButton": "Ajouter une catégorie",
+      "newTitle": "Nouvelle catégorie",
+      "editTitle": "Modification de la catégorie",
+      "nameBg": "Nom (bulgare)",
+      "nameEn": "Nom (anglais)",
+      "nameFr": "Nom (français)",
+      "slugLabel": "Slug",
+      "slugHint": "Uniquement des lettres latines minuscules, des chiffres et des tirets. Non modifiable après la création.",
+      "usedBy": "{count, plural, one {Utilisée par # outil} other {Utilisée par # outils}}",
+      "unused": "Non utilisée",
+      "deleteButton": "Supprimer",
+      "editButton": "Modifier",
+      "deleteConfirm": "Supprimer la catégorie « {name} » ?",
+      "deleteBlocked": "Une catégorie utilisée par des outils ne peut pas être supprimée.",
+      "validationFailed": "Vérifiez les champs et réessayez.",
+      "saveError": "Une erreur est survenue lors de l'enregistrement. Veuillez réessayer.",
+      "deleteError": "Une erreur est survenue lors de la suppression. Veuillez réessayer."
+    }
+  },
+  "tools": {
+    "title": "Outils IA",
+    "addButton": "Ajouter un outil",
+    "editButton": "Modifier",
+    "deleteButton": "Supprimer",
+    "deleteConfirm": "Supprimer l'outil « {name} » ?",
+    "deleteError": "Une erreur est survenue lors de la suppression. Veuillez réessayer.",
+    "deleteSuccess": "L'outil a été supprimé.",
+    "totalCount": "{count, plural, one {# outil au total} other {# outils au total}}",
+    "empty": "Aucun outil pour le moment.",
+    "loading": "Chargement des outils…",
+    "error": "Une erreur est survenue lors du chargement des outils. Veuillez réessayer.",
+    "draftBadge": "Brouillon",
+    "categoriesLabel": "Catégories",
+    "departmentsLabel": "Services",
+    "rolesLabel": "Rôles",
+    "difficultyLabel": "Difficulté",
+    "createdByLabel": "Créé par",
+    "links": {
+      "open": "Ouvrir l'outil",
+      "documentation": "Documentation",
+      "video": "Vidéo"
+    },
+    "difficulty": {
+      "beginner": "Débutant",
+      "intermediate": "Intermédiaire",
+      "advanced": "Avancé"
+    },
+    "emptyFiltered": "Aucun outil ne correspond à ces filtres.",
+    "filters": {
+      "searchPlaceholder": "Rechercher des outils…",
+      "searchAriaLabel": "Rechercher des outils par nom ou description",
+      "categoryLabel": "Catégorie",
+      "roleLabel": "Rôle",
+      "allCategories": "Toutes les catégories",
+      "allRoles": "Tous les rôles",
+      "departmentLabel": "Service",
+      "allDepartments": "Tous les services"
+    },
+    "form": {
+      "newTitle": "Nouvel outil",
+      "editTitle": "Modification : {name}",
+      "nameLabel": "Nom",
+      "descriptionLabel": "Description",
+      "descriptionCounter": "{count} / 5000",
+      "urlLabel": "Adresse de l'outil",
+      "documentationUrlLabel": "Lien vers la documentation",
+      "videoUrlLabel": "Lien vers la vidéo",
+      "difficultyLabel": "Difficulté",
+      "difficultyNone": "Non précisée",
+      "statusLabel": "Statut",
+      "status": {
+        "draft": "Brouillon",
+        "published": "Publié"
+      },
+      "statusHintCreate": "L'outil est enregistré comme brouillon. Sa publication est effectuée par les administrateurs du catalogue.",
+      "statusHintEdit": "Le statut de l'outil ne se modifie pas ici. La publication est effectuée par les administrateurs du catalogue.",
+      "optional": "(facultatif)",
+      "categoriesHeading": "Catégories",
+      "rolesHeading": "Rôles",
+      "rolesHint": "Les rôles indiquent à qui l'outil s'adresse. Ils n'en restreignent pas l'accès.",
+      "departmentsHeading": "Services",
+      "selectAll": "Tout sélectionner",
+      "clearAll": "Tout effacer",
+      "confirmCancel": "Des modifications ne sont pas enregistrées. Voulez-vous vraiment quitter ?",
+      "optionsError": "Erreur lors du chargement des catégories, des rôles et des services.",
+      "submitting": "Enregistrement…",
+      "created": "L'outil a été ajouté.",
+      "updated": "Les modifications ont été enregistrées.",
+      "loadingTool": "Chargement…",
+      "loadError": "L'outil n'a pas pu être chargé.",
+      "validationFailed": "Veuillez corriger les champs signalés.",
+      "genericError": "Une erreur est survenue lors de l'enregistrement. Veuillez réessayer."
+    },
+    "detail": {
+      "backToList": "Retour à la liste",
+      "loading": "Chargement…",
+      "loadError": "L'outil n'a pas pu être chargé."
+    },
+    "comments": {
+      "heading": "Commentaires",
+      "totalCount": "{count, plural, one {# commentaire au total} other {# commentaires au total}}",
+      "loading": "Chargement des commentaires…",
+      "loadError": "Une erreur est survenue lors du chargement des commentaires. Veuillez réessayer.",
+      "empty": "Aucun commentaire pour le moment.",
+      "newLabel": "Nouveau commentaire",
+      "placeholder": "Écrivez un commentaire…",
+      "counter": "{count} / 2000",
+      "immutableHint": "Un commentaire ne peut être ni modifié ni supprimé.",
+      "submit": "Publier",
+      "submitting": "Publication…",
+      "genericError": "Une erreur est survenue lors de la publication. Veuillez réessayer.",
+      "deletedAuthor": "Utilisateur supprimé"
+    }
+  },
+  "profile": {
+    "title": "Profil",
+    "name": "Nom",
+    "email": "Adresse e-mail",
+    "roles": "Rôles",
+    "department": "Service",
+    "noDepartment": "Aucun service",
+    "password": {
+      "title": "Changement de mot de passe",
+      "current": "Mot de passe actuel",
+      "new": "Nouveau mot de passe",
+      "confirm": "Confirmation du nouveau mot de passe",
+      "submit": "Modifier le mot de passe",
+      "success": "Le mot de passe a été modifié. Les autres sessions actives ont été interrompues.",
+      "validationFailed": "Le mot de passe n'a pas été modifié. Vérifiez les informations et réessayez.",
+      "genericError": "Une erreur est survenue. Le mot de passe n'a pas été modifié."
+    }
+  }
+}
