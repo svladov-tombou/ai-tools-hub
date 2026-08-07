@@ -2830,3 +2830,112 @@ the project's existing answer to the same question rather than a new one.
   ask-first decision, and `Intl` already does absolute dates correctly in both locales.
 - **Comment editing within a grace period** — out of scope by ADR-47(1); the backend has no route for it,
   and adding one is not a frontend phase.
+
+## ADR-49: Bulgarian validation messages — a partial translation, chosen per request by `Accept-Language`
+
+**Status:** Accepted
+
+**Context:** Every 422 this application produces has been in English since the first form was
+built. ADR-23 recorded it as debt on the tool form and ADR-48 recorded it again, unchanged, for
+comments — the same debt noted twice is a decision that has not been made. The frontend has had
+two languages since the beginning and reads the `errors` map straight out of the response, so an
+English sentence lands under a Bulgarian label with no way for the frontend to fix it. French is
+out of scope here and gets its own phase; nothing below prevents it.
+
+**Decision:**
+
+(1) **`lang/bg/validation.php` is written by hand and is PARTIAL, and `artisan lang:publish` was
+deliberately NOT run.** Laravel's file carries ~110 rules; this project uses 16. Publishing it
+would add ~94 translated sentences for rules no Form Request contains — text that is never seen,
+never tested, and has to be re-read on every framework upgrade. What is absent resolves through
+`fallback_locale` to the framework's own English file in `vendor/`. The 16 come from reading all
+eleven classes in `app/Http/Requests/`, not from the framework's list: `required`, `string`,
+`max`, `min`, `email`, `url`, `integer`, `array`, `filled`, `in`, `exists`, `unique`, `confirmed`,
+`prohibited`, `current_password` — and `regex`, which the brief did not name and which
+`StoreCategoryRequest` uses to enforce the slug format.
+
+(2) **The language comes from the request's `Accept-Language` header, not from a header of this
+project's own invention.** `Accept-Language` is on the CORS safelist, so it crosses the origin
+boundary without a preflight; a custom header is not, and would have forced an entry in
+`config/cors.php` — a file this project does not touch. The information is per-request by nature:
+the same user reads `/bg` in one tab and `/en` in another, and a value stored on the user row
+could only be wrong in one of them.
+
+(3) **`App\Http\Middleware\SetLocale` matches the header against a whitelist and never passes
+client input to `App::setLocale()`.** The whitelist is `['bg', 'en']` — the locales that have a
+`lang/` directory. An unknown language, a malformed header or no header at all leaves the locale
+from `config/app.php` in place; the middleware does not fall back to "the closest supported
+match", which is what Symfony's `getPreferredLanguage()` would do and which would answer `de` in
+Bulgarian merely because `bg` is first in the list. The whole header is parsed, so a browser's
+`bg-BG,bg;q=0.9,en;q=0.8` is honoured and the region subtag is dropped.
+
+(4) **The whitelist is a constant in the middleware, not config.** A locale belongs there once
+`lang/<locale>/` exists in the repository, which is a fact about the code rather than about the
+environment. `fr` is deliberately absent: category names already carry a `fr` translation
+(ADR-27), but there is no `lang/fr/`, so accepting `fr` today would produce English messages
+under a French UI — worse than the honest default.
+
+(5) **Registered with `$middleware->api(prepend: [...])` in `bootstrap/app.php`.** Laravel 11+ has
+no `app/Http/Kernel.php`. Prepended rather than appended because everything the locale affects —
+Sanctum's 401, every Form Request's 422 — is produced further down the stack.
+
+(6) **`attributes` covers every field name in all eleven Form Requests**, including the element
+forms (`role_ids.*`). Without it a Bulgarian sentence is built around an English noun: "Полето
+body е задължително". The wording follows the labels the forms already show in
+`messages/bg/common.json`, so the error under an input names that input the way its own label
+does. `slug` is the one entry left untranslated — it is the wire vocabulary (ADR-26) and the admin
+form labels the field "Slug" too, so a Bulgarian noun would name something not on the screen.
+
+(7) **`src/lib/api.ts` reads the locale from the `[locale]` path segment**, checked against
+`routing.locales` rather than forwarded as read. That segment is authoritative because
+`routing.ts` sets `localeDetection: false`, so the `NEXT_LOCALE` cookie is not what decided the
+rendered language. Server-side there is no `window`, no header is sent, and the backend default
+applies.
+
+(8) **The response's top-level `message` is not handled separately.** Laravel sets it to the first
+error message, so it is translated by the same mechanism. The frontend renders `errors` and never
+`message` (every form has its own dictionary string for the form-level line), but the test pins
+`message` anyway — the two must not be able to disagree about language.
+
+**Evidence — two message keys proven by running the code, not recalled:**
+
+- `Password::min(8)` reports under **`validation.min.string`**, not under any password-specific
+  key. The Bulgarian text lives at `min.string`, and it is the reason `min` is translated at all.
+- `array:bg,en,fr` with a disallowed key reports under **`validation.array`** — the same key as a
+  value that is not an array at all — and the message never names the allowed keys. Both cases
+  therefore produce "Полето име трябва да е масив.", which is true of both but explains neither.
+  Making the map case specific would need a `custom.name.array` entry; it is NOT in this phase,
+  and it is the first thing to reach for if an admin ever hits it.
+
+**Consequences:**
+
+- **The price of (1), stated plainly: a NEW rule added to a Form Request silently produces an
+  English sentence in a Bulgarian form.** Nothing fails, nothing warns, `tsc` cannot see it and
+  the suite stays green — the `fallback_locale` that makes the partial file safe is exactly what
+  makes the gap quiet. Adding a rule now has a second step, and a test asserts this fallback
+  behaviour so it is on record rather than discovered.
+- `min.array` is translated but unreachable over HTTP: `role_ids => ['required', 'array', 'min:1']`
+  fails `required` on an empty array and Laravel stops validating that attribute there. It is
+  asserted directly through `Validator` rather than shipped untested.
+- Bulgarian has no pluralisation in Laravel's validation messages. `min.array` reads
+  ":min елемент(а)" because ":min елемента" would render as "поне 1 елемента". `max.string` and
+  `min.string` are safe — their values are never 1.
+- The debt ADR-23 and ADR-48 both recorded is now paid for Bulgarian. It remains open for French
+  until `lang/fr/` exists and `fr` joins the whitelist — two lines, in a phase of its own.
+- `config/cors.php`, the policies, the controllers and `.env` were not touched. The API response
+  shape is unchanged: same status, same keys, different sentences.
+
+**Alternatives considered:**
+
+- **`artisan lang:publish` and translate everything** — rejected, see (1). It is more text to
+  maintain than the application has rules, and the ~94 unused sentences would be indistinguishable
+  from the 16 that matter.
+- **A custom header (`X-Locale`)** — rejected, see (2). It is not CORS-safelisted, so it would
+  need a preflight and an entry in `config/cors.php`.
+- **A `locale` column on `users`** — rejected. It cannot be right for a user reading `/bg` and
+  `/en` in two tabs, and it makes a display preference into a schema change.
+- **Translating on the frontend by mapping error strings back to keys** — rejected. It would mean
+  parsing English sentences to recover the rule that produced them, and it breaks the moment
+  Laravel rewords one.
+- **`$request->getPreferredLanguage(['bg', 'en'])`** — rejected, see (3). It returns the first
+  entry when nothing matches, so `Accept-Language: de` would be answered in Bulgarian.

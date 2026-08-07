@@ -1,3 +1,4 @@
+import { routing } from "@/i18n/routing";
 import type {
   AdminUser,
   Category,
@@ -65,12 +66,36 @@ function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/**
+ * The locale the user is currently reading, taken from the `[locale]` path segment.
+ *
+ * That segment is the authoritative source here: `routing.ts` sets `localeDetection: false`,
+ * so the `NEXT_LOCALE` cookie is not what decides which language the page rendered in. The
+ * value is checked against `routing.locales` rather than forwarded as read — a path segment
+ * is user input.
+ *
+ * Returns null on the server (no `window`) and on any path without a locale prefix; the
+ * request then carries no `Accept-Language` and the backend answers in its configured
+ * default (ADR-49).
+ */
+function currentLocale(): string | null {
+  if (typeof window === "undefined") return null;
+
+  const segment = window.location.pathname.split("/")[1];
+
+  return (routing.locales as readonly string[]).includes(segment) ? segment : null;
+}
+
 async function request(path: string, options: RequestInit = {}): Promise<Response> {
   const token = getToken();
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
   if (options.body) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  // `Accept-Language`, not a header of our own: it is CORS-safelisted, so it needs no
+  // preflight and no change to the backend's `config/cors.php` (ADR-49).
+  const locale = currentLocale();
+  if (locale) headers.set("Accept-Language", locale);
 
   return fetch(`${API_URL}${path}`, {
     ...options,

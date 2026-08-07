@@ -47,6 +47,34 @@ A template key using a backtick string compiles ONLY if the interpolated value i
 existing keys. Never fix such an error with `as never` or eslint-disable — that error is the
 check working.
 
+**Backend validation messages are a PARTIAL translation (ADR-49).** `backend/lang/bg/validation.php`
+covers only the 16 rules the Form Requests actually use. Add a rule that is not in that file and its
+message comes out in ENGLISH inside a Bulgarian form — quietly, through `fallback_locale`. Nothing
+fails: not `tsc`, not `sail artisan test`, not the browser. Adding a validation rule therefore has a
+second step — add its key to `lang/bg/validation.php`, and its field name to the `attributes` block
+in the same file, or the sentence reads "Полето body е задължително".
+Which key a rule reports under is not always its name: `Password::min(8)` reports under `min.string`,
+and `array:bg,en,fr` reports under plain `array` whether the value is not an array or merely has a
+disallowed key. Prove the key with a failing request before writing the translation.
+
+**Adding French touches FOUR places, and only two of them fail loudly.** The locale list is
+declared in four independent spots and nothing cross-checks them:
+
+1. `frontend/src/i18n/routing.ts` — `locales`
+2. `frontend/messages/fr/common.json` — the dictionary (`bg` stays the TYPE SOURCE; a missing key
+   here is a `tsc` error, so this one cannot be forgotten)
+3. `backend/lang/fr/validation.php` — the validation translations
+4. `backend/app/Http/Middleware/SetLocale.php` — `SUPPORTED`
+
+Do only 1 and 2 and everything LOOKS finished: `/fr` routes, the navigation, the labels and the
+category names all render in French — category names have carried a `fr` translation since ADR-27
+and `StoreCategoryRequest` already accepts the key, so that half is French-ready today. But
+`SUPPORTED` rejects `fr`, the request falls back to the configured default, and every 422 comes back
+in ENGLISH under a French form. Nothing throws, `tsc` is clean, `npm run build` is clean and the
+whole Pest suite stays green — 3 and 4 are invisible to every check this project has. If a French UI
+is showing English validation errors, look at `SetLocale::SUPPORTED` first: adding `fr` to
+`lang/` without adding it to the whitelist is the same silent failure the other way round.
+
 ## Backend
 
 **Two alphabets.** Writing wants IDs: `category_ids`, `role_ids`, `department_ids`.
