@@ -2664,3 +2664,91 @@ row's disappearance (ADR-41), and a delete on a detail page raises a question th
 - **A Markdown renderer for the description** — rejected. It is a new npm dependency (ask-first) and it
   would change what the 5000-character limit means, since the stored text would no longer be what is
   displayed.
+
+---
+
+## ADR-47: Comments on a tool — create and read only, authorized by "may you see the tool"
+
+**Status:** Accepted
+
+**Context:** ADR-46 built the tool page specifically so a conversation could sit under the description.
+This phase adds the backend for it. Nothing on the frontend was touched.
+
+**Decision:**
+
+(1) **Create and read only.** No update, no delete, no soft deletes, and no route for either — the
+absence is recorded in `routes/api.php` as a comment so it reads as a decision rather than an omission.
+Editing and deleting raise questions this phase does not answer (who may edit, for how long, what a
+deleted comment leaves behind in a thread) and every one of them is cheaper to answer later than to
+undo.
+
+(2) **Authorization is `$this->authorize('view', $tool)` in both controller methods, and there is no
+`CommentPolicy`.** Reading and writing a comment are the same question — may you see this tool — and
+that question already has exactly one answer, in `ToolPolicy::view` (ADR-35/36). A `CommentPolicy` would
+be a second copy of a rule that must never disagree with the first. It follows for free that the author
+of a draft can comment on their own draft, and that an employee gets 403 on a foreign draft on BOTH
+endpoints.
+
+(3) **`StoreCommentRequest::authorize()` returns true unconditionally**, so the tool check runs in the
+controller body. This is the ADR-28 trade-off taken the other way round, deliberately and for the same
+reason `ToolController` takes it: validation therefore runs FIRST, so a caller who may not see the tool
+and also sends an invalid body gets 422 before they get 403. Accepted — the rules for a comment are one
+field with a length limit, and there is nothing private to leak by naming them.
+
+(4) **`tool_id` and `user_id` are outside `#[Fillable]`**, the third instance of a rule this project
+already applies to `created_by` on `Tool` (ADR-12) and `is_active` on `User`. The tool comes from the URL
+and the author from the token; neither may be taken from a request body. Both are set by direct property
+assignment. Proven live: a POST carrying `user_id: 1, tool_id: 1` from an employee stored `user_id 3,
+tool_id 20`.
+
+(5) **`body` is `required|string|max:2000`**, against 5000 for a tool's description (ADR-22). A
+description is a document; a comment is a reply. `required` also rejects `""`.
+
+(6) **50 per page, `created_at DESC, id DESC`.** The second sort key is discussed in its own consequence
+below.
+
+(7) **Schema:** `tool_id` `cascadeOnDelete` — a deleted tool takes its conversation with it, since the
+comments are about that tool and mean nothing without it. `user_id` `nullable` + `nullOnDelete`,
+matching `created_by` (ADR-11): a removed user leaves an authorless comment rather than deleting
+discussion other people may have replied to. One index, `(tool_id, created_at)`, which is the only way
+the table is ever read. Both delete rules were confirmed against
+`information_schema.REFERENTIAL_CONSTRAINTS` on the live database rather than against the migration
+file, per ADR-41: `tool_id -> tools : CASCADE`, `user_id -> users : SET NULL`.
+
+(8) **Models are returned directly, with the author eager-loaded.** The project has no API Resources and
+none were introduced. `User` carries `#[Hidden(['password', 'remember_token'])]`, so the embedded author
+is safe to return as-is.
+
+**Consequences:**
+
+- **The `id DESC` tiebreaker cannot be proven by a test, and this was measured rather than assumed.**
+  `timestamps()` stores whole seconds, so two comments written in the same second tie on `created_at`.
+  Removing `orderByDesc('id')` leaves the suite GREEN: this MySQL 8.4 already returns such a tie
+  id-descending, because the query walks the `(tool_id, created_at)` index backwards and the primary key
+  is the last part of that index. A probe with twelve tied rows returned identical orders with and
+  without the tiebreaker. Reversing it to ascending DOES turn the test red, so the test pins the contract
+  and catches a wrong order — it just cannot catch a missing one, and no test through this endpoint can,
+  because what the line guards against is a query plan this database does not currently choose. The line
+  stays: paginated output makes an unstable tie worse than cosmetic, since a row can repeat on page 2 or
+  vanish between pages. Both the controller comment and the test say exactly this, so the next reader
+  does not "simplify" it away. Recorded in `docs/pitfalls.md`.
+- A `comments()` HasMany relation was added to `Tool`. That is the only change to an existing model, and
+  `ToolPolicy`, `ToolController` and `config/cors.php` were not touched.
+- Comments are visible to exactly whoever can see the tool, which for a published tool is every
+  authenticated user. There is no private or per-department thread, and no notion of an author deleting
+  their own words. Both are open questions, not oversights.
+- No factory was written for `Comment`. The test file uses local helpers, as `ToolApiTest` and
+  `ToolVisibilityTest` already do; a factory belongs to the phase that first needs seeded comments.
+
+**Alternatives considered:**
+
+- **A `CommentPolicy` with `viewAny`/`create` delegating to `ToolPolicy::view`** — rejected as a second
+  place to keep in step with the first, for a rule that is a single delegation.
+- **Putting the tool check in `StoreCommentRequest::authorize()`** (the `CategoryController` shape, which
+  would answer 403 before 422) — rejected: the Form Request would have to re-resolve the route model, and
+  the leak it protects against does not exist here, since the rules are one length limit.
+- **A `comments_count` on the tool endpoints** — deliberately not added. It changes an existing API
+  response shape, which is an ask-first decision, and nothing consumes it yet.
+- **`datetime(3)` timestamps to make ties rare instead of breaking them** — rejected. It makes the
+  failure less frequent rather than impossible, and it is a schema change to every future comment for a
+  problem one ORDER BY term solves outright.

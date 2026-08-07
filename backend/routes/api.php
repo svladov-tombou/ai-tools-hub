@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RoleController;
@@ -32,6 +33,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/tools', [ToolController::class, 'store']);
     Route::put('/tools/{tool}', [ToolController::class, 'update']);
     Route::delete('/tools/{tool}', [ToolController::class, 'destroy']);
+
+    Route::get('/tools/{tool}/comments', [CommentController::class, 'index']);
+    Route::post('/tools/{tool}/comments', [CommentController::class, 'store']);
+    // No PUT and no DELETE: comments are created and read only.
 
     Route::get('/categories', [CategoryController::class, 'index']);
     Route::post('/categories', [CategoryController::class, 'store']);

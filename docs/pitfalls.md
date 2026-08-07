@@ -147,6 +147,20 @@ without `'name' => 'array'` in `casts()` throws
 `Grammar::parameterize(): Argument #1 ($values) must be of type array, string given` from deep
 inside the query builder. The message names the grammar, not the missing cast.
 
+**A tie on `created_at` is not the nondeterminism you expect, and the test for it lies.** `timestamps()`
+stores WHOLE SECONDS, so two rows written in the same second tie — but MySQL 8.4 does not then return them
+in a random order. Measured 2026-08-07 on `comments`: with an index on `(tool_id, created_at)` and
+`ORDER BY created_at DESC`, twelve tied rows came back id-DESCENDING with and without an explicit
+`orderByDesc('id')`, byte for byte the same list. The index is scanned backwards and the primary key is
+its last part, so the tiebreaker is already there implicitly. The consequence for testing is the trap:
+**deleting the tiebreaker leaves the suite green**, so a test asserting the order does NOT prove the
+tiebreaker is doing anything, and someone "simplifying" the query later gets no warning. Reversing it to
+ascending does go red, which is the most such a test can be worth. Keep the explicit term — the implicit
+one depends on which plan the optimizer picks, and under pagination an unstable tie makes a row repeat on
+page 2 or vanish between pages — and write down in the test what it does and does not catch. General form:
+before claiming a test proves an ordering guarantee, DELETE the guarantee and watch it fail. If it does
+not fail, the test is describing the database's habits, not your code.
+
 ## Authorization
 
 **A Form Request's `authorize()` runs BEFORE `rules()`.** Where the check lives decides what an
