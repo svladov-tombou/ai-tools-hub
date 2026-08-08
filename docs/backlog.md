@@ -94,6 +94,19 @@ forces a root layout there again, which is precisely the hardcoded
 verification build overwrote `.next`, so the pre-change artifact no longer
 exists.
 
+**Known fix, deferred to the 16.3 upgrade.** Next.js has an
+`app/global-not-found.tsx` convention for exactly this shape — a root layout
+defined by a top-level dynamic segment. It must return a FULL HTML document, so
+it carries its own `<html lang>`, fonts and `globals.css`, and it does NOT put a
+route back above `[locale]`: ADR-52 stands. It requires
+`experimental.globalNotFound` in `next.config.ts`. The project is on next
+16.2.12 and the config has no `experimental` block at all, so this flag would be
+the first. Deferred for the same reason `getLocale()` was: an experimental flag
+is not worth the version risk for a page reachable only through dotted non-file
+URLs. Re-evaluate at 16.3 TOGETHER with `experimental.rootParams` /
+`getLocale()` (ADR-52) — one decision about the version, not two about the same
+risk.
+
 ## Decided against
 
 **Singular form for `totalCount`.** "Общо 1 коментара" and "1 comments total"
