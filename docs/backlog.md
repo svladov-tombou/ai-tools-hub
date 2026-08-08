@@ -72,6 +72,46 @@ value that is not an array both report under plain `validation.array`, so the
 Bulgarian message has to be true for both and says only "must be an array".
 A specific message would need `custom.name.array` — out of scope in ADR-49.
 
+**16. `<html lang="en">` on every locale.** The tag is in
+`src/app/layout.tsx` (line 27, the `lang` attribute on line 28), the root
+layout and the only `<html>` in `src/`. The build of 7 August 2026 shows it in
+the output itself: `.next/server/app/bg.html`, `en.html` and `fr.html` all
+carry `lang="en"`. `RootLayout({ children })` takes no `params`, and an App
+Router root layout sits outside every dynamic segment, so it can never receive
+one. `src/app/[locale]/layout.tsx` does have the locale (line 19) but renders
+no `<html>`. The root layout exists because `src/app/page.tsx` is a route at
+`/` outside `[locale]` that redirects to the default locale, and a page at the
+top forces a root layout, which must carry `<html>`/`<body>`. Three options.
+(A) Promote `[locale]/layout.tsx` to root: delete `src/app/layout.tsx` and
+`src/app/page.tsx` and move `<html lang={locale}>` with
+`suppressHydrationWarning`, `<body>`, the fonts, the `./globals.css` import,
+the metadata and `ThemeProvider` down. This is the structure next-intl
+documents, and the recommended one. (B) `getLocale()` in the root layout —
+tried and rejected, not from memory: `setRequestLocale` fills a per-request
+cache and is called by the child, which renders after the parent, so static
+generation would silently give `lang="bg"` everywhere. (C) `headers()` in the
+root layout — works, but makes the parent of everything dynamic and collapses
+all 28 prerendered routes (25 pages, plus `/favicon.ico`, `/_not-found` and
+`/_global-error`) to server-rendered. A is a layer change, so CLAUDE.md point 6
+makes it the user's call. It also needs a check that `/` still redirects to
+`/bg`: with `src/app/page.tsx` deleted that job falls entirely to `src/proxy.ts`
+— the Next.js 16 middleware file, whose matcher does cover `/`.
+
+**17. Hardcoded English strings in `theme-toggle.tsx`.** Line 34 is
+`aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}`, which
+violates the "no hardcoded user-facing strings" rule in CLAUDE.md. The toggle
+is rendered by the navbar (twice — desktop and mobile), which lives in
+`[locale]/layout.tsx`, so the English label is announced on every page in all
+three locales. The fix is two keys in each of the three `common.json`
+dictionaries plus the component change.
+
+**18. The tool card overflows at 375px.** The row holding the name, the draft
+badge and the edit/delete buttons in `tool-card.tsx`. Measured on 7 August 2026
+as a baseline across all locales: `/bg/tools` 7 overflowing elements, worst
++30px; `/fr/tools` 2, worst +22px; `/en/tools` 0 — which is why it went
+unnoticed. French is not the cause; it is lighter than Bulgarian. A pre-existing
+layout defect.
+
 ## Decided against
 
 **Singular form for `totalCount`.** "Общо 1 коментара" and "1 comments total"
