@@ -39,6 +39,13 @@ switch rows.
 controller uses `->safe()`, so a MISSING field is not updated. Clear a documentation link and
 omit the field, and the old value silently survives. The type forces an explicit null.
 
+**`tsc` lies about DELETED route files until the next build.** Remove a `page.tsx` or
+`layout.tsx` and `npx tsc --noEmit` reports errors naming the paths you just deleted
+(`Cannot find module '../../src/app/page.js'`, plus route-type constraint errors). They come from a
+STALE `.next/types/validator.ts`, which `tsconfig.json` pulls in through `.next/types/**/*.ts` —
+nothing is wrong with the source. Run `npm run build` first; it regenerates the file and they vanish.
+Cost real confusion once: four errors that read exactly like four real ones.
+
 ## i18n
 
 `messages/bg/common.json` is the TYPE SOURCE for `t()`. A new key goes there FIRST or `tsc` fails.

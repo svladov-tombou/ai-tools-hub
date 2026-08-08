@@ -3151,3 +3151,129 @@ locale list; the switcher is deliberately not one of them.
 - **Adding `fr` to `routing.ts` in the same commit as, or before, the dictionary** — rejected, see (1).
   Before is a broken build; together works but gives up the property that every intermediate state of
   the phase builds.
+
+## ADR-52: `<html lang>` per locale — the root layout has to sit INSIDE `[locale]`, because a root layout can never receive `params`
+
+**Status:** Accepted. Shipped as commit `13e9f3c` ("fix(a11y): serve the correct html lang per
+locale"). Unlike ADR-51 this is not an after-the-fact record: the commit was verified first and this
+entry written from that verification, so every number below is a measurement rather than a memory.
+
+**Context:** `document.documentElement.lang` was `en` on every locale — `/bg` and `/fr` included.
+`src/app/layout.tsx` hardcoded `lang="en"` and could not have done anything else: an App Router root
+layout sits OUTSIDE every dynamic segment, so it never receives `params` and the locale simply was
+not available to the component rendering `<html>`. `src/app/[locale]/layout.tsx` had the locale and
+rendered no `<html>`. The root layout existed only because `src/app/page.tsx` was a route at `/`
+outside `[locale]`; a page at the top of the tree forces a root layout, and a root layout must carry
+`<html>`/`<body>`. The three options were written out as backlog item 16 and the user chose A. That
+entry is DELETED by this same phase — the backlog's rule is that a fixed item is deleted, not ticked
+— so its reasoning is carried into "Alternatives considered" below rather than lost with it.
+
+**Decision:**
+
+(1) **Option A: `src/app/[locale]/layout.tsx` is promoted to the root layout, and
+`src/app/layout.tsx` and `src/app/page.tsx` are deleted.** The promoted file renders
+`<html lang={locale}>` from the `locale` it already awaited out of `params`. Deleting the page at `/`
+is what makes this legal: with nothing above `[locale]`, the layout that OWNS the locale is also the
+topmost one, and a root layout inside a dynamic segment is fine as long as every route lives beneath
+it. This is the structure next-intl documents. The fonts, the metadata, `<body>` and `ThemeProvider`
+moved down with it.
+
+(2) **`getLocale()` was NOT used, and the reason is a version fact worth recording so an upgrade can
+revisit it.** next-intl documents reading the locale in a root layout through `next/root-params`, and
+its routing setup page (https://next-intl.dev/docs/routing/setup) states the version boundary
+directly: `next/root-params` is available by default in **Next.js 16.3 and later**, and earlier
+versions must opt in through `experimental.rootParams`. This project runs **16.2.12**, so it is on
+the earlier side of that line. Reading the installed package agrees with the docs rather than merely
+not contradicting them: the module is present (`node_modules/next/root-params.js`), but its config
+flag `rootParams` is declared inside `interface ExperimentalConfig` in `config-shared.d.ts`, reachable
+only via `experimental?: ExperimentalConfig` — and this project's `next.config.ts` has no
+`experimental` block at all. Nothing experimental is needed anyway: the promoted layout sits INSIDE
+the dynamic segment, so `await params` gives it the locale directly. **Revisit on the upgrade to 16.3
+or later** — at that point `next/root-params` becomes the idiomatic spelling, though it buys nothing
+this file does not already have.
+
+(3) **The `globals.css` import became `../globals.css`.** The stylesheet did NOT move; it is still
+`src/app/globals.css`. The layout moved one level down, so the relative path grew one level.
+
+(4) **The provider nesting is unchanged from before the move.** `ThemeProvider` outermost, then
+`NextIntlClientProvider`, then `AuthProvider`, then `Navbar`. Previously that order was split across
+two files — `ThemeProvider` wrapped `{children}` in the old root layout and the rest lived in the
+locale layout — and collapsing them into one file preserved it exactly. This is deliberate and not
+cosmetic: `NextIntlClientProvider` stays inside `ThemeProvider` and outside `AuthProvider` for the
+reason ADR-17 (4) gives, so translations remain available to everything auth-aware.
+
+(5) **`suppressHydrationWarning` stayed on `<html>`,** per ADR-14 (3). `next-themes` writes the
+`.dark` class onto that element before React hydrates, so without the attribute every page logs a
+hydration mismatch. It moved with the tag, not with the file.
+
+(6) **`/` is no longer a Next route at all; `src/proxy.ts` alone answers it.** `src/app/page.tsx` used
+to `redirect()` there. The proxy's matcher already covered `/`, so deleting the page removed a second
+mechanism doing a job the first was doing anyway — one redirect, not two.
+
+**Evidence — measured against the built output and a running production server, not read off the source:**
+
+- **The `lang` attribute is now per locale.** In the build output, `.next/server/app/bg.html`,
+  `en.html` and `fr.html` carry `lang="bg"`, `lang="en"` and `lang="fr"`; so do the nested
+  `bg/tools.html`, `en/tools.html` and `fr/tools.html`. All three said `lang="en"` before. Served over
+  HTTP from `next start`, `/bg`, `/en` and `/fr` return the same three values.
+- **Nothing collapsed to server-rendered** — the failure mode option C would have caused. The build
+  reports `Generating static pages (27/27)`, every `[locale]` route is marked `●` (SSG), and the only
+  two dynamic routes are `/[locale]/tools/[id]` and `/[locale]/tools/[id]/edit`, exactly the two that
+  were dynamic before. `prerender-manifest.json` holds 27 routes against 28 before; the single
+  missing entry is `/`, the deleted page, and all 24 locale pages plus `_not-found`, `_global-error`
+  and `favicon.ico` are still there.
+- **The redirect from `/` is UNCHANGED, and that is provable rather than assumed** because it can be
+  exercised directly: `curl` to `/` returns `307` with `location: /bg` with no `Accept-Language`
+  header, with `Accept-Language: fr`, and with `Accept-Language: en-US,en;q=0.9` — the same answer in
+  all three cases, because `routing.ts` sets `localeDetection: false`. An unknown path without a dot
+  (`/nope`) still redirects to `/bg/nope`, so the proxy is doing the whole job the deleted page and
+  the proxy previously split.
+- **`Accept-Language` is read by exactly ONE layer, and it is not this one.** Worth spelling out,
+  because `proxy.ts` ignoring the header and `SetLocale` obeying it read as a contradiction to anyone
+  looking at only one of the two files. The FRONTEND never reads it: which UI language a visitor gets
+  is decided by the `[locale]` path segment alone, since `routing.ts` sets `localeDetection: false` —
+  that is why `/` answers `/bg` even to a browser asking for French. What the frontend does instead is
+  SEND the header, and `src/lib/api.ts` derives its value from that same path segment (ADR-49 (7)).
+  The BACKEND reads it, in `SetLocale`, for exactly one purpose: the language of validation MESSAGES
+  (ADR-49 (2)). So the header is an OUTPUT of the frontend and an INPUT to the backend, never an input
+  to routing — a French UI gets French 422s because the URL said `fr`, not because the browser did.
+- `npx tsc --noEmit` clean, `npm run lint` clean, and the full Pest suite green at **211 passed, 591
+  assertions** — the same figures as before the change, which is the point: this is a frontend layer
+  move and no backend behaviour should have shifted.
+
+**Consequences:**
+
+- The accessibility defect is closed: screen readers, `lang`-scoped CSS and browser translation
+  prompts now get the real language of the page instead of `en` on all three.
+- **A regression came with it, recorded as backlog item 19.** The built-in not-found page sits outside
+  `[locale]`, and there is no longer any layout above `[locale]` to give it a shell — it serves a bare
+  `<html>` with no `lang`, no font or theme classes and no stylesheet. Its reach is small (only paths
+  the proxy skips, which means paths containing a dot) and the obvious fix reintroduces exactly what
+  this ADR removed, which is why it is a backlog entry and not a follow-up commit.
+- `docs/pitfalls.md` gains an unrelated but expensive lesson learned during the verification: after
+  deleting a route file, `tsc` reports errors against the deleted paths out of a stale
+  `.next/types/validator.ts` until the next build regenerates it.
+- Backlog item 16 is deleted by this phase. Items 17 and 18 keep their numbers — they are identifiers,
+  referenced from ADR-51 and from commit `13e9f3c`, so the gap at 16 is the expected outcome of the
+  backlog's own rule and not an accident.
+
+**Alternatives considered:**
+
+- **(B) `getLocale()` in the old root layout** — tried and rejected, and not from memory.
+  `setRequestLocale` fills a per-request cache which is populated by the CHILD, and the child renders
+  after the parent, so the parent would read the cache before anything wrote to it. Static generation
+  would then silently produce `lang="bg"` — the configured default — on every locale, trading a
+  visibly wrong `en` for a plausibly wrong `bg`. The installed next-intl confirms the mechanism rather
+  than merely documenting it: `getLocale` is `cache(async () => (await getConfig()).locale)`, a React
+  `cache()` over the request config, with no reference to `next/root-params` anywhere in its build.
+- **(C) `headers()` in the root layout** — works, and was rejected for what it costs. Reading headers
+  opts the component into dynamic rendering, and this component is the parent of everything, so the
+  entire tree becomes server-rendered on demand: all 28 prerendered routes at the time would have
+  collapsed to SSR to fix one attribute.
+- **Leaving it and setting `lang` from the client** — rejected implicitly by choosing any of the
+  above. The attribute would be wrong in the server-rendered HTML, which is what a crawler and a
+  screen reader reaching the page first actually see, and it would have to fight
+  `suppressHydrationWarning` on the same element.
+- **`next/root-params` with `experimental.rootParams` enabled** — rejected, see (2). It would add an
+  experimental flag to `next.config.ts` to obtain a locale that `await params` already provides in
+  this position.
