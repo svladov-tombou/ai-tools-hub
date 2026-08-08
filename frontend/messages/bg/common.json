@@ -13,6 +13,8 @@
     "settings": "Настройки",
     "openMenu": "Отвори менюто",
     "closeMenu": "Затвори менюто",
+    "switchToLight": "Превключи към светла тема",
+    "switchToDark": "Превключи към тъмна тема",
     "logout": "Изход",
     "placeholderUser": "{name} ({roles})"
   },

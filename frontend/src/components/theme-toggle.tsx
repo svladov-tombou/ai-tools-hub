@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
+import { useTranslations } from "next-intl";
 
 function subscribeNoop() {
   return () => {};
@@ -20,6 +21,7 @@ function useHasMounted() {
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useHasMounted();
+  const t = useTranslations("common");
 
   if (!mounted) {
     return <div className="size-9" aria-hidden="true" />;
@@ -31,7 +33,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label={isDark ? t("nav.switchToLight") : t("nav.switchToDark")}
       className="flex size-9 items-center justify-center rounded-full border border-border bg-card text-text-primary"
     >
       {isDark ? (

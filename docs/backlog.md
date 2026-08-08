@@ -72,14 +72,6 @@ value that is not an array both report under plain `validation.array`, so the
 Bulgarian message has to be true for both and says only "must be an array".
 A specific message would need `custom.name.array` — out of scope in ADR-49.
 
-**17. Hardcoded English strings in `theme-toggle.tsx`.** Line 34 is
-`aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}`, which
-violates the "no hardcoded user-facing strings" rule in CLAUDE.md. The toggle
-is rendered by the navbar (twice — desktop and mobile), which lives in
-`[locale]/layout.tsx`, so the English label is announced on every page in all
-three locales. The fix is two keys in each of the three `common.json`
-dictionaries plus the component change.
-
 **18. The tool card overflows at 375px.** The row holding the name, the draft
 badge and the edit/delete buttons in `tool-card.tsx`. Measured on 7 August 2026
 as a baseline across all locales: `/bg/tools` 7 overflowing elements, worst

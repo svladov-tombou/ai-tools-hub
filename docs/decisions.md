@@ -3277,3 +3277,73 @@ mechanism doing a job the first was doing anyway — one redirect, not two.
 - **`next/root-params` with `experimental.rootParams` enabled** — rejected, see (2). It would add an
   experimental flag to `next.config.ts` to obtain a locale that `await params` already provides in
   this position.
+
+## ADR-53: The theme toggle's `aria-label` moves into the dictionaries, under `nav.*` beside the menu button
+
+**Status:** Accepted.
+
+**Context:** `frontend/src/components/theme-toggle.tsx` line 34 read
+`aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}` — the last hardcoded
+user-facing string in the frontend, against CLAUDE.md's "No hardcoded user-facing strings anywhere".
+The component is rendered twice by `navbar.tsx` (desktop, line 65; mobile, line 110), and the navbar
+lives in the root layout since ADR-52, so the English label was announced on every page of all three
+locales. It was backlog item 17, which named line 34 — verified correct against the file rather than
+trusted, per the iron rule in `docs/workflow.md`.
+
+**Decision:**
+
+(1) **Two keys, `nav.switchToLight` and `nav.switchToDark`, in the existing `nav` object of all
+three dictionaries.** No new top-level section. `nav` already carries exactly this shape one
+component away: `navbar.tsx:72` is `aria-label={isMenuOpen ? t("nav.closeMenu") : t("nav.openMenu")}`
+— a ternary `aria-label` on a navbar toggle button, with the pair named after the ACTION rather than
+the state. The theme toggle is navbar chrome rendered only by the navbar, so it belongs in the same
+namespace under the same naming, and the pair sits immediately after `closeMenu` in all three files
+so the dictionaries stay line-for-line comparable. Naming the action, not the state, is what makes
+the mapping legible at the call site: `isDark` is true, so the button switches TO light.
+
+(2) **Dictionaries in their own step, before the component.** `messages/bg/common.json` is the type
+source for `t()` (`src/types/next-intl.d.ts` imports it and nothing else), so the component edit does
+not compile until the `bg` keys exist. This is the standing order in `docs/workflow.md` and it costs
+nothing to honour: the dictionary step alone leaves the tree green.
+
+(3) **The English wording is preserved verbatim** — "Switch to light mode" / "Switch to dark mode".
+The change is where the string lives, not what it says, so the English build is byte-identical to a
+screen reader and only `bg` and `fr` gain anything.
+
+**Verification:**
+
+- Dictionary sync script from `docs/pitfalls.md`: bg 193 keys (reference), en 193 in sync, fr 193 in
+  sync, `OK`. It was 191 before, in all three.
+- `npx tsc --noEmit` clean; `npm run lint` clean.
+- Browser, against the running dev server, reading the rendered `aria-label` off the live element in
+  all SIX combinations of three locales and both themes: bg dark "Превключи към светла тема", bg
+  light "Превключи към тъмна тема", en dark "Switch to light mode", en light "Switch to dark mode",
+  fr dark "Basculer en mode clair", fr light "Basculer en mode sombre". Zero console errors and zero
+  warnings. Both branches were reached by setting `localStorage.theme` and reloading rather than by
+  clicking, which sidesteps the driver defect in pitfall 3d entirely — the check is a read, and a
+  missing key in a non-`bg` dictionary would have rendered the key path in place of the sentence,
+  which is the failure this is looking for.
+- `npm run build` NOT run: the developer's dev server was up throughout and the two contend for
+  `.next` (backlog item 6). Nothing here can fail a build that `tsc` and `lint` pass — the change is
+  two JSON keys and one expression — but it is unrun, not green.
+
+**Consequences:**
+
+- Backlog item 17 is deleted by this phase. Nothing is renumbered; the gaps at 2, 16 and 17 are the
+  backlog's own rule working as intended.
+- A frontend-wide sweep for `aria-label`, `title`, `alt` and `placeholder` in `src/` found no other
+  hardcoded instance — every other occurrence already goes through `t()`, and there are no `<img>`
+  or `next/image` elements to carry an `alt` at all. There is no automated guard for this, so the
+  sweep is a point-in-time result, not a property of the codebase.
+
+**Alternatives considered:**
+
+- **A new top-level `theme` section** — rejected. It would create a second convention for the same
+  kind of string: an aria-label on a navbar toggle button, which `nav` already covers. Two keys do
+  not justify a section, and the next reader looking for the theme label would have to know to look
+  somewhere other than where the menu label lives.
+- **Naming the keys after the state (`nav.lightMode` / `nav.darkMode`)** — rejected. The label
+  describes what the click DOES, not what is currently on, and state-shaped names invert the mapping
+  at the call site: `isDark ? t("nav.lightMode")` reads as a bug every time it is reviewed.
+- **A single key with an ICU `select` on the theme** — rejected as heavier than the problem and
+  unlike the `openMenu`/`closeMenu` precedent standing next to it.

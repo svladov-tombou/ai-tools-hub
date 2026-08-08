@@ -13,6 +13,8 @@
     "settings": "Paramètres",
     "openMenu": "Ouvrir le menu",
     "closeMenu": "Fermer le menu",
+    "switchToLight": "Basculer en mode clair",
+    "switchToDark": "Basculer en mode sombre",
     "logout": "Déconnexion",
     "placeholderUser": "{name} ({roles})"
   },
