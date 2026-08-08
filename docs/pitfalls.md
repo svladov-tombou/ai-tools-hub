@@ -58,30 +58,57 @@ Which key a rule reports under is not always its name: `Password::min(8)` report
 and `array:bg,en,fr` reports under plain `array` whether the value is not an array or merely has a
 disallowed key. Prove the key with a failing request before writing the translation.
 
-**Adding French touches FOUR places, and only ONE of them fails loudly.** The locale list is
-declared in four independent spots and nothing cross-checks them:
+**Adding a LANGUAGE touches TEN files, and only ONE of them fails loudly.** French is done; this
+is about the NEXT one. Four files carry the UI-language list and six more carry the category-name
+map, all declared independently, with nothing cross-checking them.
 
-1. `frontend/src/i18n/routing.ts` — `locales`. The only loud one: list `fr` here with no
-   `messages/fr/common.json` and the dynamic import in `i18n/request.ts` throws on the first
-   `/fr` request.
-2. `frontend/messages/fr/common.json` — the dictionary. SILENT, and not in the way it looks.
-   `bg` is the TYPE SOURCE, but it is the type source for `bg` ALONE: `src/types/next-intl.d.ts`
-   imports `../../messages/bg/common.json` and nothing else, and `i18n/request.ts` loads the
-   reader's dictionary through a template literal — `import(\`../../messages/${locale}/common.json\`)`
-   — which TypeScript cannot resolve to a type. A key missing from `fr` (or from `en`) is therefore
+The UI language, numbered in the ORDER THE WORK HAS TO HAPPEN — which is not the same question as
+which one fails loudly:
+
+1. `frontend/messages/<locale>/common.json` — the dictionary. FIRST, per ADR-51 (1), because doing
+   it second breaks the build (see 2). SILENT, and not in the way it looks. `bg` is the TYPE
+   SOURCE, but it is the type source for `bg` ALONE: `src/types/next-intl.d.ts` imports
+   `../../messages/bg/common.json` and nothing else, and `i18n/request.ts` loads the reader's
+   dictionary through a template literal — `import(\`../../messages/${locale}/common.json\`)` —
+   which TypeScript cannot resolve to a type. A key missing from a non-`bg` dictionary is therefore
    NOT a `tsc` error. It surfaces at runtime as the key path rendered in place of the sentence.
-   The sync script in "Useful commands" is the only check that exists; run it after every new key.
-3. `backend/lang/fr/validation.php` — the validation translations.
-4. `backend/app/Http/Middleware/SetLocale.php` — `SUPPORTED`.
+   Guarded only by the sync script in "Useful commands", which nothing runs for you; and it compares
+   the dictionaries to each other, so a key missing from ALL of them reports "in sync".
+2. `frontend/src/i18n/routing.ts` — `locales`. SECOND, and THE LOUD ONE. `src/app/[locale]/layout.tsx`
+   prerenders every entry through `generateStaticParams`, so a locale listed here without its
+   dictionary fails `npm run build` itself — not the first request to `/<locale>`. That is the whole
+   reason for the order: done this way round, every intermediate state of the work still builds.
+3. `backend/lang/<locale>/validation.php` — the validation translations, PARTIAL per ADR-49.
+   Guarded by `backend/tests/Feature/ValidationLanguageParityTest.php`, but read what that test
+   actually covers: it globs the DIRECTORIES under `lang/` and asserts each one carries `bg`'s key
+   set, in `rules` and `attributes` separately. It catches an INCOMPLETE language file, never an
+   ABSENT language — a locale with no `lang/<locale>/` directory is not in the dataset and is never
+   compared to anything. Its one guard against a vacuous run asserts merely that SOME non-`bg`
+   directory exists, which `fr` satisfies forever. (`en` deliberately has no directory: it is the
+   framework's own language.) A directory that exists with no `validation.php` in it does fail, by name.
+4. `backend/app/Http/Middleware/SetLocale.php` — `SUPPORTED`. **NOTHING guards this one.** No test,
+   no script, no compiler. It is the only one of the four with no check at all behind it.
 
-Do only 1 and 2 and everything LOOKS finished: `/fr` routes, the navigation, the labels and the
-category names all render in French — category names have carried a `fr` translation since ADR-27
-and `StoreCategoryRequest` already accepts the key, so that half is French-ready today. But
-`SUPPORTED` rejects `fr`, the request falls back to the configured default, and every 422 comes back
-in ENGLISH under a French form. Nothing throws, `tsc` is clean, `npm run build` is clean and the
-whole Pest suite stays green — 2, 3 and 4 are invisible to every check this project has. If a French
-UI is showing English validation errors, look at `SetLocale::SUPPORTED` first: adding `fr` to
-`lang/` without adding it to the whitelist is the same silent failure the other way round.
+Then the category names, which live in the DATABASE (ADR-27) and are a second list of the same
+languages written out six more times, all silent: `LocalizedName` in `frontend/src/types.ts`,
+`CategoryNamePayload` in `frontend/src/lib/api.ts`, `toCategoryName` in
+`frontend/src/lib/category-name.ts`, and `CategoryFormValues` + the `fields` array + a
+`settings.categories.name<X>` key in `frontend/src/components/category-form.tsx`; then `array:bg,en,fr`
+and the `name.<locale>` rules in BOTH `StoreCategoryRequest` and `UpdateCategoryRequest`. Miss the
+frontend ones and the new language cannot be typed into the category form; miss the backend ones and
+saving one is a 422 naming a key the admin can see on screen.
+
+Do only 1 and 2 and the interface LOOKS finished: the routes, the navigation and every label render
+in the new language. Two things are still wrong and neither announces itself. `SUPPORTED` rejects the
+locale, so the request falls back to the configured default and every 422 comes back in ENGLISH under
+a translated form. And the category names come back in BULGARIAN — `localizedName` ends in
+`?? name.bg`, so an untranslated row is indistinguishable from a translated one. Neither of these
+showed when French was added: ADR-27 had carried a `fr` slot in the name map since it was written, and
+ADR-50 put `fr` in `SUPPORTED` a whole phase early. A NEW language inherits neither head start.
+Nothing throws, `tsc` is clean, `npm run build` is clean and the whole Pest suite stays green.
+
+If a UI in some language is showing English validation errors, look at `SetLocale::SUPPORTED` first:
+adding `lang/<locale>/` without adding it to the whitelist is the same silent failure the other way round.
 
 ## Backend
 
