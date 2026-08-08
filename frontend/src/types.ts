@@ -3,7 +3,8 @@ export type Role = "owner" | "pm" | "manager" | "employee";
 /**
  * A name translated in the database rather than in a dictionary (ADR-27).
  * `bg` is required because it is the fallback; other languages may be missing.
- * `fr` is data only — French is not a selectable UI language yet.
+ * A language can be selectable in the UI (ADR-51) and still be absent
+ * here: the two lists are independent — see docs/pitfalls.md.
  */
 export type LocalizedName = { bg: string; en?: string; fr?: string };
 
