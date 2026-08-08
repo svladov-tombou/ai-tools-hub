@@ -3028,3 +3028,126 @@ separate part. Until it lands, `/fr` is not a route and the French dictionary do
   one process; the shared helpers would make the new file depend on load order.
 - **Publish Laravel's full French file** — rejected for the same reason ADR-49 (1) rejected it for
   Bulgarian, and more so: it would make the two language files structurally different.
+
+## ADR-51: The French UI — the dictionary has to land BEFORE `routing.ts`, not after
+
+**Status:** Accepted — **recorded after the fact.** The change shipped on 7 August 2026 as commit
+`92c3c6f` ("feat(i18n): add French as a selectable UI language") and no ADR was written with it; this
+entry was reconstructed the next day from the two committed files, the commit itself and the
+dictionaries on disk. Nothing below is a new decision. It is the record the phase already owed, and
+the reasoning in (1) is the reason the commit has the shape it has, not a rationalisation invented
+afterwards.
+
+**Context:** ADR-50 put French on the backend and left the frontend open in as many words:
+`SetLocale::SUPPORTED` already accepts `fr`, but "nothing on the frontend can reach any of this yet
+... until `routing.ts` lists the locale". The whole phase is two files — one dictionary and one line —
+and the only thing in it that can go wrong is the order they land in.
+
+**Decision:**
+
+(1) **`frontend/messages/fr/common.json` first — 191 keys, 239 lines.** The order is the decision;
+everything else here is content. `src/app/[locale]/layout.tsx` prerenders from `routing.locales` via
+`generateStaticParams`, and `src/i18n/request.ts` resolves messages with a dynamic
+`import(\`../../messages/${locale}/common.json\`)`. Add `fr` to `routing.ts` while `messages/fr/` does
+not exist and the build itself reaches for a module that is not there — every `/fr` route is
+prerendered, so this is not a runtime edge case waiting for a visitor, it is the build. In the other
+order the dictionary is simply an unreferenced file: nothing imports it, nothing prerenders it,
+`tsc` and `lint` and `build` all stay green. One order fails loudly at build time, the other cannot
+fail at all — so the dictionary goes first and the phase is never in a state that does not build.
+
+(2) **`routing.ts` second — one line, `fr` LAST in the array.** `locales: ["bg", "en", "fr"]`. Last
+because `defaultLocale` is `bg` and the switcher renders `routing.locales` in array order: appending
+puts FR after BG | EN instead of reordering the two languages that were already there. Nothing in the
+code depends on the position, but the rendered order is user-visible and this keeps it stable.
+
+(3) **The dictionary was translated from `bg`, NOT from `en`.** `bg` is the TYPE SOURCE and the
+language every string was authored in; `en` is itself a translation, and translating a translation
+accumulates the first translator's drift on top of the second's. Terminology is anchored in
+`backend/lang/fr/validation.php` from ADR-50, so the label and the 422 under it agree word for word
+rather than approximately: `attributes.url` there is `adresse de l'outil` and `tools.form.urlLabel`
+here is "Adresse de l'outil". The dictionary and the backend language file are two halves of one
+vocabulary, and the anchor is what keeps them one.
+
+(4) **The tone is *vous* throughout, never *tu*.** This is an internal company tool used by colleagues
+who do not choose their interface; *tu* is a register decision that a reader cannot opt out of.
+Consistency matters more than the choice: mixing the two within one interface reads as carelessness in
+a way that neither register does on its own.
+
+(5) **`department_id` renders as "service", never "département".** In French a company department is a
+*service*; *département* is an administrative division of the country. This is settled in BOTH halves
+at once — `'department_id' => 'service'` in `lang/fr/validation.php` and "Service" / "Services" /
+"Aucun service" / "Tous les services" in the dictionary — so the false friend cannot enter through the
+side that was not being looked at.
+
+(6) **ICU plural on `tools.totalCount` and `tools.comments.totalCount`, in the FRENCH dictionary
+ONLY.** French counts zero as singular — CLDR gives category `one` for 0 — so "0 outil au total"
+correctly takes no `s`, and a plain `{count} outils` would be wrong at the empty state, which is the
+first state a new deployment shows. Bulgarian deliberately does NOT get the same treatment: "Общо 1
+коментара" is grammatically wrong and the user saw it and decided explicitly not to fix it, recorded
+under "Decided against" in `docs/backlog.md`. The two dictionaries therefore differ in FORM, not only
+in words, and that is intentional. Anyone reading `bg` and `fr` side by side will see the asymmetry
+and must not "restore" it: the Bulgarian plain string is a standing decision, not a key someone forgot
+to finish.
+
+(7) **`language-switcher.tsx` was NOT touched, and that is the point.** It maps `routing.locales`, so
+the third language appeared in the navbar the moment the array grew — no third branch, no list of
+languages in a second place. `docs/pitfalls.md` counts the places that independently declare the
+locale list; the switcher is deliberately not one of them.
+
+**Evidence — measured in a real browser with Playwright, and confirmed against the deployment:**
+
+- The switcher offers three languages, not two — the array change reached the UI with no code change,
+  which is what (7) claims.
+- The five seeded categories render in French on `/fr` and are sorted BY THE FRENCH NAME, not by slug
+  and not by the Bulgarian name — `sortByLocalizedName` re-sorting per locale, proven by the order
+  differing from `/bg`.
+- A category created WITHOUT a French name falls back to the BULGARIAN one, not to an empty label —
+  the `?? name.bg` in `src/lib/localized-name.ts`, exercised rather than read. The test category was
+  deleted afterwards and the database checked.
+- The whole path end to end on `/fr/tools/new`: submit empty, get 422, the request carries
+  `accept-language: fr`, the field is labelled "Adresse de l'outil" and the message under it reads
+  "Le champ adresse de l'outil…". The dictionary and `lang/fr/validation.php` meet inside one
+  sentence — which is the only way to prove (3) rather than assert it.
+- On the deployment the next day: the server-rendered HTML at `tools.tombou.bg/fr/tools/new` contains
+  "Adresse de l'outil", and `/bg` carries `href="/fr"` in the switcher. The build ships what the dev
+  server showed.
+
+**Consequences:**
+
+- The dictionary sync check in `docs/pitfalls.md` reports `bg (reference): 191 keys`, `en: 191 keys —
+  in sync`, `fr: 191 keys — in sync`, `OK`. **Its limit, stated plainly: it compares the dictionaries
+  against each other and against nothing else.** Three dictionaries all missing the same key are "in
+  sync" and the script says `OK`. It catches drift between languages, never a key the code needs and
+  no language has — `tsc` catches that one, and only because `bg` is the type source.
+- **French is a showcase language with no reviewer.** No native speaker has read this dictionary and
+  none is being sought. It is here to demonstrate that the locale machinery takes a third language,
+  and the wording carries exactly that much authority. A real French audience means a review pass
+  first, not a new phase.
+- The browser check that produced the evidence above also turned up three PRE-EXISTING defects, none
+  of them caused by this phase, now recorded as backlog 16, 17 and 18: `<html lang="en">` on every
+  locale, hardcoded English `aria-label` strings in `theme-toggle.tsx`, and the tool card overflowing
+  at 375px.
+- **The 375px overflow is not French.** The measured baseline across all three locales was `/bg/tools`
+  7 overflowing elements, worst +30px; `/fr/tools` 2, worst +22px; `/en/tools` 0. French is lighter
+  than Bulgarian here — the defect was always there and only `/en`, the narrowest of the three, hid
+  it. Adding a language did not cause it; adding a language is what made someone look.
+- ADR-50's closing sentence is now spent: the frontend can reach the French 422s, because
+  `src/lib/api.ts` derives `Accept-Language` from the `[locale]` path segment (ADR-49 (7)) and `fr` is
+  now a segment that exists. `api.ts` itself was not touched — it validates against `routing.locales`,
+  so it followed the array like the switcher did.
+
+**Alternatives considered:**
+
+- **Translating from `en` instead of `bg`** — rejected, see (3). `en` is a translation; using it as the
+  source compounds drift, and it is not the type source, so it has no claim to being canonical.
+- **Having the chat write the 239 lines of dictionary instead of delegating to the coder agent** —
+  rejected, and the user proposed the delegation himself. The agent holds `messages/bg/common.json`
+  and `lang/fr/validation.php` in context at once, which is exactly what (3)'s anchoring requires; a
+  file of that size written turn by turn in the chat is where terminology drifts between the top of
+  the file and the bottom.
+- **Adding ICU plural to `bg` for symmetry with `fr`** — rejected by the user explicitly, see (6). The
+  Bulgarian wording is a decision already recorded under "Decided against"; symmetry between
+  dictionaries is not a reason to reopen it.
+- **Adding `fr` to `routing.ts` in the same commit as, or before, the dictionary** — rejected, see (1).
+  Before is a broken build; together works but gives up the property that every intermediate state of
+  the phase builds.
