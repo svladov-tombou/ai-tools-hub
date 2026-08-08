@@ -107,6 +107,27 @@ URLs. Re-evaluate at 16.3 TOGETHER with `experimental.rootParams` /
 `getLocale()` (ADR-52) — one decision about the version, not two about the same
 risk.
 
+**20. `npm audit` reports 6 high-severity advisories in the frontend.**
+Printed on every deploy. They split in two by REACHABILITY, not by severity.
+
+Build/lint only, no runtime path: `brace-expansion` (one copy under
+`@typescript-eslint`), `js-yaml`, `nanoid`. All three are denial-of-service
+against the process that runs them, so they need an attacker who controls their
+input — and the input of a linter is this repository.
+
+Runtime-capable but unreachable here: `postcss` (build-time, over our own CSS)
+and `sharp`, which inherits libvips CVEs and only matters where images are
+processed. The frontend has NO `<img>` and NO `next/image` anywhere — verified
+by a sweep and confirmed by the user — so `sharp` is present as a `next`
+dependency and never called. THE CONDITION THAT CHANGES THIS: adding
+`next/image` over user-supplied URLs makes `sharp` reachable and this entry
+urgent.
+
+Both of the second group need `npm audit fix --force`, i.e. a MAJOR bump of
+`next` itself, not a patch. Fold into the 16.3 upgrade together with item 19
+and `getLocale()` (ADR-52). Do NOT run `npm audit fix --force` on its own:
+it trades a working build for a theoretical risk.
+
 ## Decided against
 
 **Singular form for `totalCount`.** "Общо 1 коментара" and "1 comments total"
